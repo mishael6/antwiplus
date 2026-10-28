@@ -8,7 +8,7 @@ export function StoreHeader() {
     <div className="announcement"><span>✦</span> Thoughtful finds for your everyday <span className="announcement-link">Delivery across Ghana</span></div>
     <header className="site-header"><Link className="wordmark" href="/" aria-label="AntwiPlus home">antwi<span>+</span></Link>
       <nav className="main-nav" aria-label="Main navigation"><Link href="/shop">Shop all</Link><Link href="/shop?category=Handbags">Handbags</Link><Link href="/shop?category=Luggage">Luggage</Link><Link href="/about">Our story</Link></nav>
-      <div className="header-actions"><Link className="icon-button account-button" href="/admin" aria-label="Admin sign in">♙</Link><CartCount /></div>
+      <div className="header-actions"><Link className="icon-button account-button" href="/account" aria-label="Your account">♙</Link><CartCount /></div>
     </header>
   </>;
 }

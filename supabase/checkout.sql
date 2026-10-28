@@ -1,5 +1,6 @@
 -- Cash-on-delivery order creation. Run once in the Supabase SQL Editor.
 -- Prices and stock are read and updated in the database; browser totals are never trusted.
+drop function if exists public.create_cash_order(text, text, text, text, text, text, jsonb);
 create or replace function public.create_cash_order(
   p_email text,
   p_full_name text,
@@ -7,11 +8,12 @@ create or replace function public.create_cash_order(
   p_address text,
   p_city text,
   p_region text,
-  p_items jsonb
+  p_items jsonb,
+  p_customer_id uuid
 )
 returns uuid
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
@@ -68,12 +70,18 @@ begin
 
   insert into public.orders (customer_id, customer_email, items, total_pesewas, status, delivery_address)
   values (
-    auth.uid(), lower(trim(p_email)), v_order_items, v_total, 'pending',
+    p_customer_id, lower(trim(p_email)), v_order_items, v_total, 'pending',
     jsonb_build_object('full_name', trim(p_full_name), 'phone', trim(p_phone), 'address', trim(p_address), 'city', trim(p_city), 'region', trim(p_region))
   ) returning id into v_order_id;
   return v_order_id;
 end;
 $$;
 
-revoke all on function public.create_cash_order(text, text, text, text, text, text, jsonb) from public;
-grant execute on function public.create_cash_order(text, text, text, text, text, text, jsonb) to anon, authenticated;
+revoke all on function public.create_cash_order(text, text, text, text, text, text, jsonb, uuid) from public, anon, authenticated;
+grant execute on function public.create_cash_order(text, text, text, text, text, text, jsonb, uuid) to service_role;
+grant select, update on public.products to service_role;
+grant insert, update on public.orders to service_role;
+
+drop policy if exists "Customers can view own orders" on public.orders;
+create policy "Customers can view own orders" on public.orders
+for select to authenticated using (customer_id = (select auth.uid()));
