@@ -1,0 +1,47 @@
+0 verbose cli C:\Program Files\nodejs\node.exe C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js
+1 info using npm@11.6.2
+2 info using node@v24.11.1
+3 silly config load:file:C:\Program Files\nodejs\node_modules\npm\npmrc
+4 silly config load:file:C:\Users\hp\Documents\Codex\2026-10-28\ler\.npmrc
+5 silly config load:file:C:\Users\hp\.npmrc
+6 silly config load:file:C:\Users\hp\AppData\Roaming\npm\etc\npmrc
+7 verbose title npm install @supabase/ssr@0.12.7 @supabase/supabase-js@2.118.0
+8 verbose argv "install" "--save-exact" "@supabase/ssr@0.12.7" "@supabase/supabase-js@2.118.0" "--cache" "work/npm-cache"
+9 verbose logfile logs-max:10 dir:C:\Users\hp\Documents\Codex\2026-10-28\ler\work\npm-cache\_logs\2026-10-28T14_03_58_162Z-
+10 verbose logfile C:\Users\hp\Documents\Codex\2026-10-28\ler\work\npm-cache\_logs\2026-10-28T14_03_58_162Z-debug-0.log
+11 silly logfile done cleaning log files
+12 silly packumentCache heap:2348810240 maxSize:587202560 maxEntrySize:293601280
+13 silly idealTree buildDeps
+14 silly fetch manifest @supabase/ssr@0.12.7
+15 silly packumentCache full:https://registry.npmjs.org/@supabase%2fssr cache-miss
+16 http fetch GET https://registry.npmjs.org/@supabase%2fssr attempt 1 failed with EACCES
+17 http fetch GET https://registry.npmjs.org/@supabase%2fssr attempt 2 failed with EACCES
+18 http fetch GET https://registry.npmjs.org/@supabase%2fssr attempt 3 failed with EACCES
+19 http fetch GET 200 https://registry.npmjs.org/@supabase%2fssr 70494ms (cache stale)
+20 silly packumentCache full:https://registry.npmjs.org/@supabase%2fssr set size:261164 disposed:false
+21 silly fetch manifest @supabase/supabase-js@2.118.0
+22 silly packumentCache full:https://registry.npmjs.org/@supabase%2fsupabase-js cache-miss
+23 http fetch GET https://registry.npmjs.org/@supabase%2fsupabase-js attempt 1 failed with EACCES
+24 http fetch GET https://registry.npmjs.org/@supabase%2fsupabase-js attempt 2 failed with EACCES
+25 http fetch GET https://registry.npmjs.org/@supabase%2fsupabase-js attempt 3 failed with EACCES
+26 http fetch GET 200 https://registry.npmjs.org/@supabase%2fsupabase-js 70132ms (cache stale)
+27 silly packumentCache full:https://registry.npmjs.org/@supabase%2fsupabase-js set size:4147160 disposed:false
+28 silly fetch manifest @opentelemetry/api@>=1.0.0
+29 silly packumentCache full:https://registry.npmjs.org/@opentelemetry%2fapi cache-miss
+30 http fetch GET https://registry.npmjs.org/@opentelemetry%2fapi attempt 1 failed with EACCES
+31 http fetch GET https://registry.npmjs.org/@opentelemetry%2fapi attempt 2 failed with EACCES
+32 http fetch GET https://registry.npmjs.org/@opentelemetry%2fapi attempt 3 failed with EACCES
+33 http fetch GET 200 https://registry.npmjs.org/@opentelemetry%2fapi 70075ms (cache stale)
+34 silly packumentCache full:https://registry.npmjs.org/@opentelemetry%2fapi set size:283794 disposed:false
+35 silly placeDep ROOT @supabase/ssr@0.12.7 REPLACE for: antwiplus-commerce@0.1.0 want: 0.12.7
+36 silly placeDep ROOT @supabase/supabase-js@2.118.0 REPLACE for: antwiplus-commerce@0.1.0 want: 2.118.0
+37 silly fetch manifest @emnapi/runtime@^1.11.3
+38 silly packumentCache full:https://registry.npmjs.org/@emnapi%2fruntime cache-miss
+39 http fetch GET https://registry.npmjs.org/@emnapi%2fruntime attempt 1 failed with EACCES
+40 http fetch GET https://registry.npmjs.org/@emnapi%2fruntime attempt 2 failed with EACCES
+41 http fetch GET https://registry.npmjs.org/@emnapi%2fruntime attempt 3 failed with EACCES
+42 silly placeDep node_modules/@img/sharp-wasm32 @emnapi/runtime@ OK for: @img/sharp-wasm32@0.35.5 want: ^1.11.3
+43 silly fetch manifest @emnapi/core@^1.7.1 || 2.0.0-beta.2
+44 silly packumentCache full:https://registry.npmjs.org/@emnapi%2fcore cache-miss
+45 http fetch GET https://registry.npmjs.org/@emnapi%2fcore attempt 1 failed with EACCES
+46 http fetch GET https://registry.npmjs.org/@emnapi%2fcore attempt 2 failed with EACCES
