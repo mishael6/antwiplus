@@ -25,7 +25,7 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
   const orderList = orders ?? [];
   const activeCount = catalog.filter((product) => product.is_active).length;
   const money = (pesewas: number) => `GH₵ ${(pesewas / 100).toLocaleString("en-GH", { minimumFractionDigits: 2 })}`;
-  const email = String(claims.email ?? "Store admin");
+  const email = String(claims?.email ?? "Store admin");
 
   return <div className="admin-shell">
     <aside className="admin-sidebar"><Link href="/" className="wordmark admin-brand">antwi<span>+</span></Link><p className="admin-side-label">STORE MANAGEMENT</p><nav><a className="active" href="/admin">▦ <span>Overview</span></a><a href="#catalog">▣ <span>Products</span></a><a href="#orders">▤ <span>Orders</span></a></nav><div className="admin-sidebar-bottom"><span className="admin-avatar">{email.slice(0, 1).toUpperCase()}</span><div><b>{email}</b><small>Administrator</small></div><form action={signOut}><button className="signout-button" aria-label="Sign out">↗</button></form></div></aside>
