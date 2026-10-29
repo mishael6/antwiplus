@@ -16,7 +16,9 @@ Open [http://localhost:3000](http://localhost:3000) for the shop or [http://loca
 1. Create a Supabase project.
 2. Copy `.env.example` to `.env.local`, then fill in the project URL and publishable key from the Supabase project API settings.
 3. Run `supabase/schema.sql` in the Supabase SQL Editor. It creates the catalog and order tables, access policies, the product image bucket, and starter products.
-4. In Supabase Authentication, create your own email and password user. Then replace `YOUR_ADMIN_EMAIL` in `supabase/assign-admin-role.sql`, run it in the SQL Editor, and sign out and back in at `/admin`.
+4. For an existing project, run `supabase/admin-access.sql` in the SQL Editor (run it again to add later admin-access updates). For a fresh project, use the updated `supabase/schema.sql` instead.
+5. Create your owner account under Supabase Authentication > Users. Replace `YOUR_OWNER_EMAIL` in `supabase/assign-admin-role.sql`, run the script, then sign in again at `/admin`. This makes that account the first super admin.
+6. Set `SUPABASE_SECRET_KEY` in `.env.local` to the project secret key (server only). The super admin uses Team access to create dedicated dashboard emails and temporary passwords, then assigns Overview, Products, and Orders permissions. Admins can change their password under Account & password after signing in. Use a reachable email address if password reset emails may be needed.
 
 The app uses the Supabase SSR cookie pattern. Never add a Supabase secret/service-role key to `NEXT_PUBLIC_*` variables or commit `.env.local`.
 

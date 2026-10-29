@@ -1,5 +1,7 @@
--- Replace the email with the account created in Supabase Authentication > Users.
--- Then sign out and sign back in so the account receives a fresh role claim.
-update auth.users
-set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"role":"admin"}'::jsonb
-where email = 'YOUR_ADMIN_EMAIL';
+-- Replace this with the owner email, then run once after admin-access.sql.
+insert into public.admin_access (user_id, email, role, permissions)
+select id, email, 'super_admin', '{}'
+from auth.users
+where lower(email) = lower('mishosmanmensah660@gmail.com')
+on conflict (user_id) do update
+set email = excluded.email, role = 'super_admin', permissions = '{}', must_change_password = false;

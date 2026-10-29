@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireAdmin } from "@/lib/admin";
+import { getAdminSession, requireAdmin } from "@/lib/admin";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 export async function signIn(formData: FormData) {
   if (!isSupabaseConfigured()) redirect("/admin?setup=1");
@@ -12,14 +13,16 @@ export async function signIn(formData: FormData) {
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) redirect("/admin?error=signin");
-  const { data } = await supabase.auth.getClaims();
-  const claims = data?.claims as Record<string, unknown> | undefined;
-  const appMetadata = claims?.app_metadata as Record<string, unknown> | undefined;
-  if (appMetadata?.role !== "admin") {
+  const session = await getAdminSession();
+  if (!session?.access) {
     await supabase.auth.signOut({ scope: "local" });
     redirect("/admin?access=denied");
   }
-  redirect("/admin");
+  if (session.access.mustChangePassword) redirect("/admin/account?force=1");
+  if (session.access.permissions.includes("overview") || session.access.role === "super_admin") redirect("/admin");
+  if (session.access.permissions.includes("products")) redirect("/admin/products");
+  if (session.access.permissions.includes("orders")) redirect("/admin/orders");
+  redirect("/admin?access=denied");
 }
 
 export async function signOut() {
@@ -30,8 +33,26 @@ export async function signOut() {
   redirect("/admin");
 }
 
+export async function changeAdminPassword(formData: FormData) {
+  const { supabase, access } = await requireAdmin(undefined, { allowPasswordChange: true });
+  const currentPassword = String(formData.get("current_password") ?? "");
+  const newPassword = String(formData.get("new_password") ?? "");
+  const confirmPassword = String(formData.get("confirm_password") ?? "");
+  if (newPassword.length < 10 || newPassword.length > 128) redirect("/admin/account?error=length");
+  if (newPassword !== confirmPassword) redirect("/admin/account?error=mismatch");
+  const { error: verifyError } = await supabase.auth.signInWithPassword({ email: access.email, password: currentPassword });
+  if (verifyError) redirect("/admin/account?error=current");
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) redirect("/admin/account?error=update");
+  const { error: accessError } = await createServiceClient().from("admin_access")
+    .update({ must_change_password: false }).eq("user_id", access.userId);
+  if (accessError) redirect("/admin/account?error=flag");
+  revalidatePath("/admin/account");
+  redirect("/admin/account?success=1");
+}
+
 export async function createProduct(formData: FormData) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireAdmin("products");
   const name = String(formData.get("name") ?? "").trim();
   const slug = String(formData.get("slug") ?? "").trim().toLowerCase();
   const category = String(formData.get("category") ?? "").trim();
@@ -51,14 +72,16 @@ export async function createProduct(formData: FormData) {
   if (error) redirect(`/admin/products/new?error=${encodeURIComponent(error.code === "23505" ? "slug" : "save")}`);
   revalidatePath("/");
   revalidatePath("/admin");
-  redirect("/admin?created=1");
+  revalidatePath("/admin/products");
+  redirect("/admin/products?created=1");
 }
 
 export async function toggleProduct(formData: FormData) {
-  const { supabase } = await requireAdmin();
+  const { supabase } = await requireAdmin("products");
   const id = String(formData.get("id") ?? "");
   const isActive = String(formData.get("is_active") ?? "") === "true";
   await supabase.from("products").update({ is_active: !isActive }).eq("id", id);
   revalidatePath("/");
   revalidatePath("/admin");
+  revalidatePath("/admin/products");
 }
