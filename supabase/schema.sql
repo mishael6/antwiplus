@@ -36,12 +36,35 @@ create table if not exists public.orders (
   customer_email text not null,
   items jsonb not null default '[]'::jsonb,
   total_pesewas integer not null check (total_pesewas >= 0),
-  status text not null default 'pending' check (status in ('pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded')),
+  status text not null default 'pending' check (status in ('pending', 'confirmed', 'paid', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'delivery_failed', 'cancelled', 'refunded')),
   payment_reference text,
+  tracking_reference text not null unique default ('AP-' || upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 16))),
+  tracking_carrier text,
+  tracking_code text,
+  tracking_url text,
+  discount_code text,
+  discount_pesewas integer not null default 0 check (discount_pesewas >= 0),
   delivery_address jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create table if not exists public.discount_codes (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique check (code = upper(code) and code ~ '^[A-Z0-9-]{3,32}$'),
+  discount_type text not null check (discount_type in ('percent', 'fixed')),
+  discount_value integer not null check (discount_value > 0),
+  minimum_order_pesewas integer not null default 0 check (minimum_order_pesewas >= 0),
+  usage_limit integer check (usage_limit is null or usage_limit > 0),
+  usage_count integer not null default 0 check (usage_count >= 0),
+  expires_at timestamptz,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  check (discount_type <> 'percent' or discount_value <= 100)
+);
+alter table public.discount_codes enable row level security;
+revoke all on public.discount_codes from anon, authenticated;
+grant select, insert, update on public.discount_codes to service_role;
 
 drop trigger if exists orders_set_updated_at on public.orders;
 create trigger orders_set_updated_at before update on public.orders
@@ -57,12 +80,42 @@ create table if not exists public.admin_access (
   role text not null default 'admin' check (role in ('super_admin', 'admin')),
   permissions text[] not null default '{}',
   must_change_password boolean not null default false,
+  display_name text,
+  phone text,
+  avatar_path text,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
-  constraint admin_permissions_valid check (permissions <@ array['overview','products','orders']::text[])
+  constraint admin_permissions_valid check (permissions <@ array['overview','products','inventory','orders','customers','marketing','reports']::text[])
 );
+create table if not exists public.admin_activity_logs (
+  id bigint generated always as identity primary key,
+  actor_id uuid references public.admin_access(user_id) on delete set null,
+  actor_email text not null,
+  action text not null,
+  entity_type text not null,
+  entity_id text,
+  summary text not null,
+  created_at timestamptz not null default now()
+);
+create table if not exists public.customer_profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  display_name text not null check (length(display_name) between 1 and 80),
+  phone text,
+  avatar_path text,
+  updated_at timestamptz not null default now()
+);
+alter table public.customer_profiles enable row level security;
+grant select, insert, update on public.customer_profiles to authenticated;
+drop policy if exists "Customers manage own profile" on public.customer_profiles;
+create policy "Customers manage own profile" on public.customer_profiles for all to authenticated
+using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+create index if not exists admin_activity_logs_created_at_idx on public.admin_activity_logs (created_at desc);
+alter table public.admin_activity_logs enable row level security;
+revoke all on public.admin_activity_logs from anon, authenticated;
+grant select, insert on public.admin_activity_logs to service_role;
 alter table public.admin_access enable row level security;
 grant select on public.admin_access to authenticated;
+drop policy if exists "Admins can view own access" on public.admin_access;
 create policy "Admins can view own access" on public.admin_access for select to authenticated using (user_id = (select auth.uid()));
 revoke insert, update, delete on public.admin_access from anon, authenticated;
 create or replace function public.has_admin_feature(feature text)
@@ -130,6 +183,26 @@ with check (bucket_id = 'product-images' and public.has_admin_feature('products'
 drop policy if exists "Admins can delete product images" on storage.objects;
 create policy "Admins can delete product images" on storage.objects
 for delete to authenticated using (bucket_id = 'product-images' and public.has_admin_feature('products'));
+
+-- Private administrator profile photos.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('admin-avatars', 'admin-avatars', false, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set public = false, file_size_limit = 2097152, allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp'];
+drop policy if exists "Admins upload own avatar" on storage.objects;
+create policy "Admins upload own avatar" on storage.objects for insert to authenticated
+with check (bucket_id = 'admin-avatars' and (storage.foldername(name))[1] = auth.uid()::text and exists (select 1 from public.admin_access a where a.user_id = auth.uid()));
+drop policy if exists "Admins update own avatar" on storage.objects;
+create policy "Admins update own avatar" on storage.objects for update to authenticated
+using (bucket_id = 'admin-avatars' and (storage.foldername(name))[1] = auth.uid()::text and exists (select 1 from public.admin_access a where a.user_id = auth.uid()))
+with check (bucket_id = 'admin-avatars' and (storage.foldername(name))[1] = auth.uid()::text and exists (select 1 from public.admin_access a where a.user_id = auth.uid()));
+drop policy if exists "Admins view own avatar" on storage.objects;
+create policy "Admins view own avatar" on storage.objects for select to authenticated
+using (bucket_id = 'admin-avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+
+-- Private customer profile photos. Uploads run through the authenticated server action.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('customer-avatars', 'customer-avatars', false, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set public = false, file_size_limit = 2097152, allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp'];
 
 -- Starter catalog items, so the connected storefront has content immediately.
 insert into public.products (name, slug, category, price_pesewas, compare_at_pesewas, stock_quantity, visual, tag, is_active)

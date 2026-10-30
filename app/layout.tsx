@@ -4,8 +4,8 @@ import "./store.css";
 import { CartProvider } from "@/components/cart";
 
 export const metadata: Metadata = {
-  title: "AntwiPlus — Bags, luggage & everyday finds",
-  description: "Thoughtful bags, luggage, and finds for your everyday and your next adventure.",
+  title: "AntwiPlus — Discover more of what you love",
+  description: "Explore useful, thoughtful finds across fashion, technology, home, travel, and more at AntwiPlus.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

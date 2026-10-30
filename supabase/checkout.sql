@@ -1,6 +1,7 @@
 -- Cash-on-delivery order creation. Run once in the Supabase SQL Editor.
 -- Prices and stock are read and updated in the database; browser totals are never trusted.
 drop function if exists public.create_cash_order(text, text, text, text, text, text, jsonb);
+drop function if exists public.create_cash_order(text, text, text, text, text, text, jsonb, uuid);
 create or replace function public.create_cash_order(
   p_email text,
   p_full_name text,
@@ -9,7 +10,8 @@ create or replace function public.create_cash_order(
   p_city text,
   p_region text,
   p_items jsonb,
-  p_customer_id uuid
+  p_customer_id uuid,
+  p_discount_code text
 )
 returns uuid
 language plpgsql
@@ -25,6 +27,9 @@ declare
   v_order_items jsonb := '[]'::jsonb;
   v_seen uuid[] := array[]::uuid[];
   v_order_id uuid;
+  v_discount record;
+  v_discount_pesewas integer := 0;
+  v_discount_applied boolean := false;
 begin
   if p_email is null or length(trim(p_email)) > 254 or trim(p_email) !~* '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
      or nullif(trim(p_full_name), '') is null or length(p_full_name) > 160
@@ -68,17 +73,39 @@ begin
     update public.products set stock_quantity = stock_quantity - v_quantity where id = v_product.id;
   end loop;
 
-  insert into public.orders (customer_id, customer_email, items, total_pesewas, status, delivery_address)
+  if nullif(trim(p_discount_code), '') is not null then
+    select * into v_discount from public.discount_codes
+      where code = upper(trim(p_discount_code)) and is_active = true
+        and (expires_at is null or expires_at > now())
+      for update;
+    if not found then raise exception 'Discount code is invalid or expired'; end if;
+    if v_total < v_discount.minimum_order_pesewas then raise exception 'Discount minimum order not met'; end if;
+    if v_discount.usage_limit is not null and v_discount.usage_count >= v_discount.usage_limit then
+      raise exception 'Discount code usage limit reached';
+    end if;
+    v_discount_pesewas := case when v_discount.discount_type = 'percent'
+      then floor(v_total * v_discount.discount_value / 100.0)::integer
+      else least(v_total, v_discount.discount_value) end;
+    v_total := greatest(0, v_total - v_discount_pesewas);
+    v_discount_applied := true;
+  end if;
+
+  insert into public.orders (customer_id, customer_email, items, total_pesewas, status, delivery_address, discount_code, discount_pesewas)
   values (
     p_customer_id, lower(trim(p_email)), v_order_items, v_total, 'pending',
-    jsonb_build_object('full_name', trim(p_full_name), 'phone', trim(p_phone), 'address', trim(p_address), 'city', trim(p_city), 'region', trim(p_region))
+    jsonb_build_object('full_name', trim(p_full_name), 'phone', trim(p_phone), 'address', trim(p_address), 'city', trim(p_city), 'region', trim(p_region)),
+    case when nullif(trim(p_discount_code), '') is null then null else upper(trim(p_discount_code)) end,
+    v_discount_pesewas
   ) returning id into v_order_id;
+  if v_discount_applied then
+    update public.discount_codes set usage_count = usage_count + 1 where id = v_discount.id;
+  end if;
   return v_order_id;
 end;
 $$;
 
-revoke all on function public.create_cash_order(text, text, text, text, text, text, jsonb, uuid) from public, anon, authenticated;
-grant execute on function public.create_cash_order(text, text, text, text, text, text, jsonb, uuid) to service_role;
+revoke all on function public.create_cash_order(text, text, text, text, text, text, jsonb, uuid, text) from public, anon, authenticated;
+grant execute on function public.create_cash_order(text, text, text, text, text, text, jsonb, uuid, text) to service_role;
 grant select, update on public.products to service_role;
 grant insert, update on public.orders to service_role;
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { ADMIN_FEATURES, requireSuperAdmin } from "@/lib/admin";
 import { createServiceClient } from "@/lib/supabase/service";
+import { logAdminActivity } from "@/lib/admin-activity";
 
 export async function addAdmin(formData: FormData) {
   const { access } = await requireSuperAdmin();
@@ -21,30 +22,33 @@ export async function addAdmin(formData: FormData) {
     await service.auth.admin.deleteUser(user.id);
     redirect("/admin/team?error=save");
   }
+  await logAdminActivity({ actorId: access.userId, actorEmail: access.email, action: "admin_created", entityType: "admin", entityId: user.id, summary: `Created admin access for ${email}.` });
   revalidatePath("/admin/team");
   redirect("/admin/team?success=1");
 }
 
 export async function updateAdminPermissions(formData: FormData) {
-  await requireSuperAdmin();
+  const { access } = await requireSuperAdmin();
   const userId = String(formData.get("user_id") ?? "");
   const permissions = formData.getAll("permissions").map(String).filter((value) => ADMIN_FEATURES.includes(value as (typeof ADMIN_FEATURES)[number]));
   if (!userId) redirect("/admin/team?error=save");
   const service = createServiceClient();
+  const { data: member } = await service.from("admin_access").select("email").eq("user_id", userId).eq("role", "admin").maybeSingle();
   const { error } = await service.from("admin_access").update({ permissions }).eq("user_id", userId).eq("role", "admin");
   if (error) redirect("/admin/team?error=save");
+  await logAdminActivity({ actorId: access.userId, actorEmail: access.email, action: "admin_permissions_updated", entityType: "admin", entityId: userId, summary: `Updated dashboard access for ${member?.email ?? "an administrator"}: ${permissions.join(", ") || "no sections"}.` });
   revalidatePath("/admin/team");
   redirect("/admin/team?success=1");
 }
 
 export async function resetAdminPassword(formData: FormData) {
-  await requireSuperAdmin();
+  const { access } = await requireSuperAdmin();
   const userId = String(formData.get("user_id") ?? "");
   const password = String(formData.get("password") ?? "");
   if (!userId) redirect("/admin/team?error=reset");
   if (password.length < 10 || password.length > 128) redirect("/admin/team?error=password");
   const service = createServiceClient();
-  const { data: member } = await service.from("admin_access").select("user_id").eq("user_id", userId).eq("role", "admin").maybeSingle();
+  const { data: member } = await service.from("admin_access").select("user_id,email").eq("user_id", userId).eq("role", "admin").maybeSingle();
   if (!member) redirect("/admin/team?error=reset");
   const { error: flagError } = await service.from("admin_access").update({ must_change_password: true }).eq("user_id", userId).eq("role", "admin");
   if (flagError) redirect("/admin/team?error=reset");
@@ -53,6 +57,7 @@ export async function resetAdminPassword(formData: FormData) {
     await service.from("admin_access").update({ must_change_password: false }).eq("user_id", userId).eq("role", "admin");
     redirect("/admin/team?error=reset");
   }
+  await logAdminActivity({ actorId: access.userId, actorEmail: access.email, action: "admin_password_reset", entityType: "admin", entityId: userId, summary: `Set a temporary password for ${member.email}.` });
   revalidatePath("/admin/team");
   redirect("/admin/team?success=reset");
 }
@@ -62,8 +67,10 @@ export async function removeAdmin(formData: FormData) {
   const userId = String(formData.get("user_id") ?? "");
   if (!userId || userId === access.userId) redirect("/admin/team?error=remove");
   const service = createServiceClient();
+  const { data: member } = await service.from("admin_access").select("email").eq("user_id", userId).eq("role", "admin").maybeSingle();
   const { error } = await service.from("admin_access").delete().eq("user_id", userId).eq("role", "admin");
   if (error) redirect("/admin/team?error=remove");
+  await logAdminActivity({ actorId: access.userId, actorEmail: access.email, action: "admin_removed", entityType: "admin", entityId: userId, summary: `Removed admin access for ${member?.email ?? "an administrator"}.` });
   revalidatePath("/admin/team");
   redirect("/admin/team?success=1");
 }

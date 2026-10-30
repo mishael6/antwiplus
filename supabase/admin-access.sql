@@ -9,6 +9,8 @@ create table if not exists public.admin_access (
   constraint admin_permissions_valid check (permissions <@ array['overview','products','orders']::text[])
 );
 alter table public.admin_access add column if not exists must_change_password boolean not null default false;
+alter table public.admin_access drop constraint if exists admin_permissions_valid;
+alter table public.admin_access add constraint admin_permissions_valid check (permissions <@ array['overview','products','inventory','orders','customers','marketing','reports']::text[]);
 alter table public.admin_access enable row level security;
 grant select on public.admin_access to authenticated;
 drop policy if exists "Admins can view own access" on public.admin_access;

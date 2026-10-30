@@ -69,12 +69,12 @@ export function useCart() {
 export function AddToCartButton({ product }: { product: CartProduct }) {
   const { add } = useCart();
   const [added, setAdded] = useState(false);
-  return <button className="store-add-button" type="button" disabled={product.stock_quantity < 1} onClick={() => { add(product); setAdded(true); window.setTimeout(() => setAdded(false), 1300); }}>{product.stock_quantity < 1 ? "Sold out" : added ? "Added to bag ✓" : "Add to bag +"}</button>;
+  return <button className="store-add-button" type="button" disabled={product.stock_quantity < 1} onClick={() => { add(product); setAdded(true); window.setTimeout(() => setAdded(false), 1300); }}>{product.stock_quantity < 1 ? "Sold out" : added ? "Added to cart ✓" : "Add to cart +"}</button>;
 }
 
 export function CartCount() {
   const { count } = useCart();
-  return <Link className="store-cart-link" href="/cart" aria-label={`Shopping bag, ${count} items`}>Bag <span>{count}</span></Link>;
+  return <Link className="store-cart-link" href="/cart" aria-label={`Shopping cart, ${count} ${count === 1 ? "item" : "items"}`}><span className="store-cart-icon"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><path d="M3 4h2l2.1 10.1a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 1.9-1.4L21 8H6"/><circle cx="9.5" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><span className="store-cart-count">{count}</span></span><span className="store-cart-copy"><b>Shopping cart</b><small>{count} {count === 1 ? "item" : "items"}</small></span><span className="store-cart-arrow" aria-hidden="true">›</span></Link>;
 }
 
 export function ClearCartOnLoad() {
