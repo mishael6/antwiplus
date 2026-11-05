@@ -7,6 +7,7 @@ export type StoreProduct = CartProduct & {
   description: string | null;
   compare_at_pesewas: number | null;
   tag: string | null;
+  brand: string | null;
 };
 
 export async function getStoreProducts(): Promise<StoreProduct[]> {
@@ -14,7 +15,7 @@ export async function getStoreProducts(): Promise<StoreProduct[]> {
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.from("products")
-      .select("id,slug,name,category,description,price_pesewas,compare_at_pesewas,stock_quantity,image_url,visual,tag")
+      .select("id,slug,name,category,brand,description,price_pesewas,compare_at_pesewas,stock_quantity,image_url,tag")
       .eq("is_active", true).order("created_at", { ascending: false });
     if (error || !data) return [];
     return data as StoreProduct[];

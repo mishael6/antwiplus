@@ -8,9 +8,9 @@ export type CartProduct = {
   slug: string;
   name: string;
   category: string;
+  brand?: string | null;
   price_pesewas: number;
   image_url: string | null;
-  visual: string;
   stock_quantity: number;
 };
 

@@ -21,7 +21,7 @@ export async function StoreHeader() {
   return <>
     <div className="announcement"><span>✦</span> {settings.announcement} <span className="announcement-link">{settings.delivery_note}</span></div>
     <header className="site-header"><div className="store-header-main"><Link className="wordmark" href="/" aria-label="AntwiPlus home">antwi<span>+</span></Link>
-      <form className="store-search" action="/shop" method="get" role="search"><label className="sr-only" htmlFor="store-search-query">Search products</label><input id="store-search-query" name="q" type="search" placeholder="Search all products and categories" /><button type="submit" aria-label="Search AntwiPlus"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4.4 4.4"/></svg></button></form>
+      <form className="store-search" action="/shop" method="get" role="search"><label className="sr-only" htmlFor="store-search-query">Search products</label><input id="store-search-query" name="q" type="search" placeholder="Search products, brands, categories" /><button type="submit" aria-label="Search AntwiPlus"><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><circle cx="10.8" cy="10.8" r="6.6"/><path d="m16 16 4.4 4.4"/></svg></button></form>
       <div className="header-actions"><Link className={`store-account-link${customer ? " is-signed-in" : ""}`} href="/account" aria-label={customer ? `Signed in as ${customer.name}. View your account` : "Sign in or view your account"}><svg aria-hidden="true" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c.4-3.3 2.8-5.2 6.5-5.2s6.1 1.9 6.5 5.2"/></svg><span>{customer ? <><b>Hi, {customer.name}</b><small>Signed in · My orders</small></> : <>Account<small>Sign in</small></>}</span></Link><CartCount /></div>
     </div><nav className="main-nav" aria-label="Main navigation"><div className="main-nav-links"><CategoryNav categories={categories}/><Link href="/shop?collection=new">New arrivals</Link><Link href="/shop">Shop all</Link><Link href="/shop?collection=offers">Special offers</Link><Link href="/track-order">Track an order</Link><Link href="/contact">Contact</Link><Link href="/about">About AntwiPlus</Link></div></nav></header>
   </>;
@@ -38,7 +38,7 @@ export function ProductCard({ product }: { product: StoreProduct }) {
       {!product.image_url && <span aria-hidden="true" className="product-placeholder">{product.category.toLowerCase().includes("luggage") || product.category.toLowerCase().includes("travel") ? "◈" : "◒"}</span>}
       {product.tag && <span className="product-tag">{product.tag}</span>}
     </Link>
-    <div className="store-product-meta"><div><span className="product-category">{product.category}</span><Link href={`/products/${product.slug}`}><h3>{product.name}</h3></Link></div><span className="product-price">{formatPrice(product.price_pesewas)}</span></div>
+    <div className="store-product-meta"><div>{product.brand && <span className="product-brand">{product.brand}</span>}<span className="product-category">{product.category}</span><Link href={`/products/${product.slug}`}><h3>{product.name}</h3></Link></div><span className="product-price">{formatPrice(product.price_pesewas)}</span></div>
     <AddToCartButton product={product} />
   </article>;
 }

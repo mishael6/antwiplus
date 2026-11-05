@@ -1,5 +1,12 @@
 import { redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
+
+const getCachedAdminAvatarUrl = unstable_cache(async (path: string) => {
+  const { data } = await (await import("@/lib/supabase/service")).createServiceClient()
+    .storage.from("admin-avatars").createSignedUrl(path, 3600);
+  return data?.signedUrl ?? null;
+}, ["admin-avatar-signed-url"], { revalidate: 2700 });
 
 export const ADMIN_FEATURES = ["overview", "products", "inventory", "orders", "customers", "marketing", "reports"] as const;
 export type AdminFeature = (typeof ADMIN_FEATURES)[number];
@@ -28,10 +35,8 @@ export async function getAdminSession() {
     : [];
   let avatarUrl: string | null = null;
   if (row.avatar_path) {
-    try {
-      const { data } = await (await import("@/lib/supabase/service")).createServiceClient().storage.from("admin-avatars").createSignedUrl(row.avatar_path, 3600);
-      avatarUrl = data?.signedUrl ?? null;
-    } catch { avatarUrl = null; }
+    try { avatarUrl = await getCachedAdminAvatarUrl(row.avatar_path); }
+    catch { avatarUrl = null; }
   }
   return { supabase, claims, access: { userId, email: row.email, role: row.role as AdminRole, permissions, mustChangePassword: row.must_change_password === true, displayName: row.display_name, phone: row.phone, avatarPath: row.avatar_path, avatarUrl } satisfies AdminAccess };
 }

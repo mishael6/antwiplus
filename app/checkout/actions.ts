@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { createServiceClient } from "@/lib/supabase/service";
 import { createClient } from "@/lib/supabase/server";
 import { sendOrderConfirmationEmail } from "@/lib/store-email";
+import { cookies } from "next/headers";
+import { recordCustomerReferralEvent } from "@/lib/customer-referrals";
 
 export async function placeCashOrder(formData: FormData) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SECRET_KEY) redirect("/checkout?error=setup");
@@ -40,6 +42,8 @@ export async function placeCashOrder(formData: FormData) {
     redirect(`/checkout?error=${code}`);
   }
   const { data: order } = await supabase.from("orders").select("tracking_reference").eq("id", data).maybeSingle();
+  const referralCode = (await cookies()).get("antwiplus_referral")?.value;
+  if (referralCode) await recordCustomerReferralEvent({ code: referralCode, eventType: "order", referredUserId: auth.user?.id, orderId: data });
   if (order?.tracking_reference) await sendOrderConfirmationEmail({ to: email, name: fullName, reference: order.tracking_reference });
   revalidatePath("/admin");
   redirect(`/order-confirmation/${data}`);

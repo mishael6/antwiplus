@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
+import { cookies } from "next/headers";
+import { recordCustomerReferralEvent } from "@/lib/customer-referrals";
 
 export async function createCustomerAccount(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -14,6 +16,10 @@ export async function createCustomerAccount(formData: FormData) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
   const { data, error } = await supabase.auth.signUp({ email, password, ...(siteUrl ? { options: { emailRedirectTo: `${siteUrl.replace(/\/$/, "")}/auth/callback?next=${encodeURIComponent(next)}` } } : {}) });
   if (error) redirect(`/account?error=signup${next === "/checkout" ? "&next=/checkout" : ""}`);
+  const referralCode = (await cookies()).get("antwiplus_referral")?.value;
+  if (referralCode && data.user?.id && data.user.identities?.length) {
+    await recordCustomerReferralEvent({ code: referralCode, eventType: "signup", referredUserId: data.user.id });
+  }
   if (data.session) redirect(next);
   redirect(`/account?created=1${next === "/checkout" ? "&next=/checkout" : ""}`);
 }

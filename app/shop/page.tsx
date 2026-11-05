@@ -10,7 +10,7 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
   const normalizedTerm = searchTerm.toLowerCase();
   const visible = products.filter((product) => {
     const matchesCategory = !activeCategory || product.category.toLowerCase().includes(activeCategory.toLowerCase());
-    const searchable = [product.name, product.description ?? "", product.category, product.slug, product.tag ?? ""].join(" ").toLowerCase();
+    const searchable = [product.name, product.brand ?? "", product.description ?? "", product.category, product.slug, product.tag ?? ""].join(" ").toLowerCase();
     const matchesCollection = activeCollection !== "offers" || (product.compare_at_pesewas !== null && product.compare_at_pesewas > product.price_pesewas);
     return matchesCategory && matchesCollection && (!normalizedTerm || searchable.includes(normalizedTerm));
   });

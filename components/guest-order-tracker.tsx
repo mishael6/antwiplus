@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { trackGuestOrder, type TrackedOrder, type TrackingState } from "@/app/track-order/actions";
+import { formatDateTime } from "@/lib/date-format";
 
 const statusLabels: Record<string, string> = {
   pending: "Order received", confirmed: "Order confirmed", paid: "Payment received", processing: "Preparing your order",
@@ -12,9 +13,9 @@ const statusLabels: Record<string, string> = {
 function OrderProgress({ order }: { order: TrackedOrder }) {
   return <section className="guest-tracking-result" aria-live="polite">
     <div className="guest-tracking-header"><div><p className="admin-kicker">ORDER {order.reference}</p><h2>{statusLabels[order.status] ?? order.status}</h2></div><span className={`status-pill ${order.status === "delivered" ? "live" : "draft"}`}>{statusLabels[order.status] ?? order.status}</span></div>
-    <p className="tracking-placed-date">Placed {new Date(order.created_at).toLocaleString("en-GH", { dateStyle: "medium", timeStyle: "short" })}</p>
+    <p className="tracking-placed-date">Placed {formatDateTime(order.created_at)}</p>
     {(order.carrier || order.tracking_code || order.tracking_url) && <div className="tracking-carrier">{order.carrier && <b>{order.carrier}</b>}{order.tracking_code && <span>Tracking number: <b>{order.tracking_code}</b></span>}{order.tracking_url && <a href={order.tracking_url} target="_blank" rel="noreferrer">Open courier tracking ↗</a>}</div>}
-    <ol className="tracking-timeline">{order.events.map((event, index) => <li className={index === order.events.length - 1 ? "current" : ""} key={`${event.status}-${event.created_at}`}><span className="tracking-dot" /><div><b>{statusLabels[event.status] ?? event.status}</b>{event.note && <p>{event.note}</p>}<time>{new Date(event.created_at).toLocaleString("en-GH", { dateStyle: "medium", timeStyle: "short" })}</time></div></li>)}</ol>
+    <ol className="tracking-timeline">{order.events.map((event, index) => <li className={index === order.events.length - 1 ? "current" : ""} key={`${event.status}-${event.created_at}`}><span className="tracking-dot" /><div><b>{statusLabels[event.status] ?? event.status}</b>{event.note && <p>{event.note}</p>}<time>{formatDateTime(event.created_at)}</time></div></li>)}</ol>
     <p className="tracking-help">Need a hand? <a href="/contact">Contact AntwiPlus support</a> and include your order reference.</p>
   </section>;
 }

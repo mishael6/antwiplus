@@ -94,20 +94,30 @@ export async function createProduct(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const slug = String(formData.get("slug") ?? "").trim().toLowerCase();
   const category = String(formData.get("category") ?? "").trim();
+  const brand = String(formData.get("brand") ?? "").trim().slice(0, 80) || null;
   const price = Number(formData.get("price"));
   const stock = Number(formData.get("stock") ?? 0);
-  const visual = String(formData.get("visual") ?? "beauty");
-  const imageUrl = String(formData.get("image_url") ?? "").trim() || null;
+  const image = formData.get("image");
   const description = String(formData.get("description") ?? "").trim() || null;
 
   if (!name || !slug || !category || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
     redirect("/admin/products/new?error=invalid");
   }
+  if (!(image instanceof File) || image.size === 0) redirect("/admin/products/new?error=image");
+  const extension = image.type === "image/jpeg" ? "jpg" : image.type === "image/png" ? "png" : image.type === "image/webp" ? "webp" : "";
+  if (!extension || image.size > 5 * 1024 * 1024) redirect("/admin/products/new?error=image");
+  const imagePath = `products/${crypto.randomUUID()}.${extension}`;
+  const { error: uploadError } = await supabase.storage.from("product-images").upload(imagePath, image, { contentType: image.type, upsert: false });
+  if (uploadError) redirect("/admin/products/new?error=upload");
+  const imageUrl = supabase.storage.from("product-images").getPublicUrl(imagePath).data.publicUrl;
   const { error } = await supabase.from("products").insert({
-    name, slug, category, price_pesewas: Math.round(price * 100), stock_quantity: stock, visual,
+    name, slug, category, brand, price_pesewas: Math.round(price * 100), stock_quantity: stock,
     image_url: imageUrl, description, is_active: true,
   });
-  if (error) redirect(`/admin/products/new?error=${encodeURIComponent(error.code === "23505" ? "slug" : "save")}`);
+  if (error) {
+    await supabase.storage.from("product-images").remove([imagePath]);
+    redirect(`/admin/products/new?error=${encodeURIComponent(error.code === "23505" ? "slug" : "save")}`);
+  }
   await logAdminActivity({ actorId: access.userId, actorEmail: access.email, action: "product_created", entityType: "product", entityId: slug, summary: `Created product “${name}”.` });
   revalidatePath("/");
   revalidatePath("/admin");
@@ -121,16 +131,29 @@ export async function updateProduct(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const slug = String(formData.get("slug") ?? "").trim().toLowerCase();
   const category = String(formData.get("category") ?? "").trim();
+  const brand = String(formData.get("brand") ?? "").trim().slice(0, 80) || null;
   const price = Number(formData.get("price"));
   const compareAt = String(formData.get("compare_at") ?? "").trim() ? Number(formData.get("compare_at")) : null;
-  const visual = String(formData.get("visual") ?? "beauty");
-  const imageUrl = String(formData.get("image_url") ?? "").trim() || null;
+  const image = formData.get("image");
   const description = String(formData.get("description") ?? "").trim() || null;
   const tag = String(formData.get("tag") ?? "").trim().slice(0, 50) || null;
   const isActive = String(formData.get("is_active")) === "true";
-  if (!/^[0-9a-f-]{36}$/i.test(id) || !name || !slug || !category || !Number.isFinite(price) || price <= 0 || (compareAt !== null && (!Number.isFinite(compareAt) || compareAt <= price)) || !["tote", "headphones", "candles", "beauty"].includes(visual)) redirect("/admin/products?error=invalid");
-  const { error } = await supabase.from("products").update({ name, slug, category, price_pesewas: Math.round(price * 100), compare_at_pesewas: compareAt === null ? null : Math.round(compareAt * 100), visual, image_url: imageUrl, description, tag, is_active: isActive }).eq("id", id);
-  if (error) redirect(`/admin/products/${id}?error=${encodeURIComponent(error.code === "23505" ? "slug" : "save")}`);
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !name || !slug || !category || !Number.isFinite(price) || price <= 0 || (compareAt !== null && (!Number.isFinite(compareAt) || compareAt <= price))) redirect("/admin/products?error=invalid");
+  let imageUrl: string | undefined;
+  let imagePath: string | null = null;
+  if (image instanceof File && image.size > 0) {
+    const extension = image.type === "image/jpeg" ? "jpg" : image.type === "image/png" ? "png" : image.type === "image/webp" ? "webp" : "";
+    if (!extension || image.size > 5 * 1024 * 1024) redirect(`/admin/products/${id}?error=image`);
+    imagePath = `products/${crypto.randomUUID()}.${extension}`;
+    const { error: uploadError } = await supabase.storage.from("product-images").upload(imagePath, image, { contentType: image.type, upsert: false });
+    if (uploadError) redirect(`/admin/products/${id}?error=upload`);
+    imageUrl = supabase.storage.from("product-images").getPublicUrl(imagePath).data.publicUrl;
+  }
+  const { error } = await supabase.from("products").update({ name, slug, category, brand, price_pesewas: Math.round(price * 100), compare_at_pesewas: compareAt === null ? null : Math.round(compareAt * 100), ...(imageUrl ? { image_url: imageUrl } : {}), description, tag, is_active: isActive }).eq("id", id);
+  if (error) {
+    if (imagePath) await supabase.storage.from("product-images").remove([imagePath]);
+    redirect(`/admin/products/${id}?error=${encodeURIComponent(error.code === "23505" ? "slug" : "save")}`);
+  }
   await logAdminActivity({ actorId: access.userId, actorEmail: access.email, action: "product_updated", entityType: "product", entityId: id, summary: `Updated product “${name}”.` });
   revalidatePath("/"); revalidatePath("/shop"); revalidatePath(`/products/${slug}`); revalidatePath("/admin/products"); revalidatePath("/admin");
   redirect("/admin/products?updated=1");
@@ -146,6 +169,34 @@ export async function toggleProduct(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/admin");
   revalidatePath("/admin/products");
+}
+
+export async function deleteProduct(formData: FormData) {
+  const { supabase, access } = await requireAdmin("products");
+  const id = String(formData.get("id") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) redirect("/admin/products?error=delete");
+
+  const { data: product, error: readError } = await supabase.from("products").select("name,slug,image_url").eq("id", id).maybeSingle();
+  if (readError || !product) redirect("/admin/products?error=delete");
+
+  const { error } = await supabase.from("products").delete().eq("id", id);
+  if (error) redirect("/admin/products?error=delete");
+
+  const imagePath = typeof product.image_url === "string"
+    ? product.image_url.match(/\/storage\/v1\/object\/public\/product-images\/(.+)$/)?.[1]
+    : null;
+  if (imagePath) {
+    const { error: imageError } = await supabase.storage.from("product-images").remove([decodeURIComponent(imagePath)]);
+    if (imageError) console.error("Product deleted, but its stored image could not be removed.", imageError.message);
+  }
+
+  await logAdminActivity({ actorId: access.userId, actorEmail: access.email, action: "product_deleted", entityType: "product", entityId: id, summary: `Permanently deleted product “${product.name}”.` });
+  revalidatePath("/");
+  revalidatePath("/shop");
+  revalidatePath(`/products/${product.slug}`);
+  revalidatePath("/admin");
+  revalidatePath("/admin/products");
+  redirect("/admin/products?deleted=1");
 }
 
 export async function updateProductStock(formData: FormData) {
@@ -240,4 +291,75 @@ export async function updateOrderFulfillment(formData: FormData) {
   revalidatePath("/admin/orders");
   revalidatePath("/admin");
   redirect("/admin/orders?updated=1");
+}
+
+export async function clearSelectedStoreData(formData: FormData) {
+  const { access } = await requireSuperAdmin();
+  const allowed = ["orders", "products", "customers", "discounts", "activity", "store_settings"] as const;
+  const selected = new Set(formData.getAll("clear").map(String));
+  const confirmation = String(formData.get("confirmation") ?? "").trim();
+  if (!allowed.some((key) => selected.has(key))) redirect("/admin/settings?clearError=selection");
+  if (confirmation !== "CLEAR ANTWIPLUS DATA") redirect("/admin/settings?clearError=confirmation");
+
+  const service = createServiceClient();
+  const clear = Object.fromEntries(allowed.map((key) => [key, selected.has(key)]));
+  const productImagePaths: string[] = [];
+  const customerAvatarPaths: string[] = [];
+
+  if (selected.has("products")) {
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await service.from("products").select("image_url").range(offset, offset + 999);
+      if (error) redirect("/admin/settings?clearError=read");
+      for (const row of data ?? []) {
+        const path = typeof row.image_url === "string" ? row.image_url.match(/\/storage\/v1\/object\/public\/product-images\/(.+)$/)?.[1] : null;
+        if (path) { try { productImagePaths.push(decodeURIComponent(path)); } catch { productImagePaths.push(path); } }
+      }
+      if (!data || data.length < 1000) break;
+    }
+  }
+
+  if (selected.has("customers")) {
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await service.from("customer_profiles").select("avatar_path").not("avatar_path", "is", null).range(offset, offset + 999);
+      if (error) redirect("/admin/settings?clearError=read");
+      customerAvatarPaths.push(...(data ?? []).map((row) => row.avatar_path).filter((path): path is string => Boolean(path)));
+      if (!data || data.length < 1000) break;
+    }
+  }
+
+  const { error } = await service.rpc("super_admin_clear_store_data", {
+    p_actor_id: access.userId,
+    p_confirmation: confirmation,
+    p_clear: clear,
+  });
+  if (error) {
+    // Keep the detailed Postgres response in the server logs for diagnosis, while
+    // showing the super admin a concise explanation that does not expose SQL.
+    console.error("[data-cleanup] Supabase cleanup RPC failed", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+    const reason = error.code === "PGRST202" || error.code === "42883" ? "setup"
+      : error.code === "42501" ? "permission"
+      : error.code === "22023" ? "confirmation"
+      : error.code === "23503" ? "dependency"
+      : error.code === "21000" ? "cardinality"
+      : error.code === "42P01" || error.code === "42703" ? "schema"
+      : "failed";
+    const code = /^[A-Z0-9]{5}$/.test(error.code ?? "") ? error.code : "unknown";
+    redirect(`/admin/settings?clearError=${reason}&clearCode=${code}`);
+  }
+
+  let mediaCleanupFailed = false;
+  for (const [bucket, paths] of [["product-images", productImagePaths], ["customer-avatars", customerAvatarPaths]] as const) {
+    for (let offset = 0; offset < paths.length; offset += 100) {
+      const { error: storageError } = await service.storage.from(bucket).remove(paths.slice(offset, offset + 100));
+      if (storageError) mediaCleanupFailed = true;
+    }
+  }
+
+  revalidatePath("/"); revalidatePath("/shop"); revalidatePath("/admin"); revalidatePath("/admin/products"); revalidatePath("/admin/orders"); revalidatePath("/admin/customers"); revalidatePath("/admin/discounts"); revalidatePath("/admin/reports"); revalidatePath("/admin/activity"); revalidatePath("/admin/settings");
+  redirect(mediaCleanupFailed ? "/admin/settings?cleared=media-warning" : "/admin/settings?cleared=1");
 }
