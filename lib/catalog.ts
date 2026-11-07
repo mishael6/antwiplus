@@ -1,4 +1,4 @@
-import type { CartProduct } from "@/components/cart";
+import type { CartProduct, StoreColorVariant } from "@/components/cart";
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import { STORE_CATEGORIES } from "@/lib/store-categories";
 export { formatPrice } from "@/lib/currency";
@@ -8,6 +8,7 @@ export type StoreProduct = CartProduct & {
   compare_at_pesewas: number | null;
   tag: string | null;
   brand: string | null;
+  variants: StoreColorVariant[];
 };
 
 export async function getStoreProducts(): Promise<StoreProduct[]> {
@@ -18,7 +19,9 @@ export async function getStoreProducts(): Promise<StoreProduct[]> {
       .select("id,slug,name,category,brand,description,price_pesewas,compare_at_pesewas,stock_quantity,image_url,tag")
       .eq("is_active", true).order("created_at", { ascending: false });
     if (error || !data) return [];
-    return data as StoreProduct[];
+    if (!data.length) return [];
+    const { data: variants } = await supabase.from("product_color_variants").select("id,product_id,name,hex,image_url,sort_order").in("product_id", data.map((product) => product.id)).order("sort_order");
+    return data.map((product) => ({ ...product, variants: (variants ?? []).filter((variant) => variant.product_id === product.id).map(({ id, name, hex, image_url }) => ({ id, name, hex, image_url })) })) as StoreProduct[];
   } catch {
     return [];
   }
@@ -44,4 +47,3 @@ export async function getStoreCategories(): Promise<string[]> {
   }
   return [...categories.values()];
 }
-

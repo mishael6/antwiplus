@@ -11,7 +11,7 @@ const money = (pesewas: number) => `GH₵ ${(Number(pesewas) / 100).toLocaleStri
 export default async function AdminOrdersPage({ searchParams }: { searchParams: Promise<{ updated?: string; error?: string; q?: string; view?: string }> }) {
   const { supabase, access } = await requireAdmin("orders");
   const [{ data }, query] = await Promise.all([
-    supabase.from("orders").select("id,tracking_reference,customer_email,total_pesewas,status,created_at,tracking_carrier,tracking_code,tracking_url").order("created_at", { ascending: false }).limit(100),
+    supabase.from("orders").select("id,tracking_reference,customer_email,total_pesewas,status,created_at,tracking_carrier,tracking_code,tracking_url,items").order("created_at", { ascending: false }).limit(100),
     searchParams,
   ]);
   const orders = data ?? [];
@@ -47,7 +47,7 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
         {[{ key: "all", label: "All orders" }, { key: "attention", label: "Needs action" }, { key: "fulfillment", label: "In fulfillment" }, { key: "completed", label: "Completed" }].map((item) => <Link key={item.key} className={view === item.key ? "selected" : ""} href={`/admin/orders?view=${item.key}${query.q ? `&q=${encodeURIComponent(query.q)}` : ""}`}>{item.label}</Link>)}
       </nav>
       {filteredOrders.length === 0 ? <div className="orders-empty-state"><span>▤</span><b>{orders.length ? "No orders match these filters" : "No orders yet"}</b><p>{orders.length ? "Try another search or select a different order view." : "New customer purchases will appear here."}</p>{(q || view !== "all") && <Link href="/admin/orders">Clear filters</Link>}</div> : <div className="admin-table-wrap orders-table-wrap"><table className="admin-table orders-table"><thead><tr><th>ORDER</th><th>CUSTOMER</th><th>PLACED</th><th>ORDER TOTAL</th><th>STATUS</th><th>FULFILLMENT</th></tr></thead><tbody>{filteredOrders.map((order) => <tr key={order.id}>
-        <td><div className="orders-reference"><b>{order.tracking_reference ?? `#${order.id.slice(0, 8).toUpperCase()}`}</b><small>{order.id.slice(0, 8).toUpperCase()}</small></div></td>
+        <td><div className="orders-reference"><b>{order.tracking_reference ?? `#${order.id.slice(0, 8).toUpperCase()}`}</b><small>{order.id.slice(0, 8).toUpperCase()}</small>{Array.isArray(order.items) && <small className="order-items-summary">{order.items.map((item: { name?: string; quantity?: number; variant_name?: string }) => `${item.name ?? "Item"}${item.variant_name ? ` · ${item.variant_name}` : ""} × ${item.quantity ?? 1}`).join(", ")}</small>}</div></td>
         <td><div className="orders-customer"><span>{order.customer_email.slice(0, 1).toUpperCase()}</span><b>{order.customer_email}</b></div></td>
         <td className="orders-date">{formatDate(order.created_at)}</td><td className="orders-total">{money(order.total_pesewas)}</td>
         <td><span className={`orders-status ${statusClass(order.status)}`}><i/>{statusLabels[order.status] ?? order.status.replaceAll("_", " ")}</span></td>

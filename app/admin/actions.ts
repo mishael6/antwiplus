@@ -7,6 +7,83 @@ import { createClient, isSupabaseConfigured } from "@/lib/supabase/server";
 import { createServiceClient } from "@/lib/supabase/service";
 import { logAdminActivity } from "@/lib/admin-activity";
 import { sendOrderUpdateEmail } from "@/lib/store-email";
+import { slugifyProductName } from "@/lib/product-slug";
+
+type SavedColorVariant = { id?: string; name: string; hex: string; image_url: string; sort_order: number };
+
+async function uploadColorVariants(formData: FormData, supabase: Awaited<ReturnType<typeof createClient>>, errorPath: string): Promise<{ variants: SavedColorVariant[]; uploadedPaths: string[] }> {
+  const count = Number(formData.get("variant_count") ?? 0);
+  if (!Number.isInteger(count) || count < 0 || count > 10) redirect(`${errorPath}?error=invalid`);
+  const prepared: { id?: string; name: string; hex: string; existingUrl: string; image: File | null }[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < count; index++) {
+    const name = String(formData.get(`color_name_${index}`) ?? "").trim().slice(0, 40);
+    const hex = String(formData.get(`color_hex_${index}`) ?? "").trim();
+    const existingUrl = String(formData.get(`color_existing_image_${index}`) ?? "").trim();
+    const rawImage = formData.get(`color_image_${index}`);
+    const image = rawImage instanceof File && rawImage.size > 0 ? rawImage : null;
+    if (!name || !/^#[0-9a-f]{6}$/i.test(hex) || seen.has(name.toLowerCase())) redirect(`${errorPath}?error=invalid`);
+    seen.add(name.toLowerCase());
+    if (image) {
+      const extension = image.type === "image/jpeg" ? "jpg" : image.type === "image/png" ? "png" : image.type === "image/webp" ? "webp" : "";
+      if (!extension || image.size > 5 * 1024 * 1024) redirect(`${errorPath}?error=image`);
+    }
+    if (!image && !existingUrl) redirect(`${errorPath}?error=invalid`);
+    const id = String(formData.get(`color_id_${index}`) ?? "");
+    prepared.push({ ...( /^[0-9a-f-]{36}$/i.test(id) ? { id } : {} ), name, hex, existingUrl, image });
+  }
+  const variants: SavedColorVariant[] = [];
+  const uploadedPaths: string[] = [];
+  for (const [index, item] of prepared.entries()) {
+    let imageUrl = item.existingUrl;
+    if (item.image) {
+      const extension = item.image.type === "image/jpeg" ? "jpg" : item.image.type === "image/png" ? "png" : "webp";
+      const path = `products/${crypto.randomUUID()}.${extension}`;
+      const { error } = await supabase.storage.from("product-images").upload(path, item.image, { contentType: item.image.type, upsert: false });
+      if (error) {
+        if (uploadedPaths.length) await supabase.storage.from("product-images").remove(uploadedPaths);
+        redirect(`${errorPath}?error=upload`);
+      }
+      uploadedPaths.push(path);
+      imageUrl = supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl;
+    }
+    variants.push({ ...(item.id ? { id: item.id } : {}), name: item.name, hex: item.hex, image_url: imageUrl, sort_order: index });
+  }
+  return { variants, uploadedPaths };
+}
+
+async function generateProductSlug(name: string, supabase: Awaited<ReturnType<typeof createClient>>) {
+  const base = slugifyProductName(name) || "product";
+  for (let index = 1; index <= 100; index++) {
+    const candidate = index === 1 ? base : `${base}-${index}`;
+    const { data, error } = await supabase.from("products").select("id").eq("slug", candidate).maybeSingle();
+    if (error) throw error;
+    if (!data) return candidate;
+  }
+  return `${base}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+async function saveColorVariants(productId: string, variants: SavedColorVariant[], supabase: Awaited<ReturnType<typeof createClient>>) {
+  const service = createServiceClient();
+  const { data: previous, error: readError } = await service.from("product_color_variants").select("id,name,hex,image_url,sort_order").eq("product_id", productId);
+  if (readError) return { error: readError, previous: [] as SavedColorVariant[] };
+  const existingIds = new Set((previous ?? []).map((variant) => variant.id));
+  const submitted = variants.map(({ id, ...variant }) => ({ ...variant, ...(id && existingIds.has(id) ? { id } : {}), product_id: productId }));
+  const { error: upsertError } = submitted.length ? await service.from("product_color_variants").upsert(submitted) : { error: null };
+  if (upsertError) return { error: upsertError, previous: (previous ?? []) as SavedColorVariant[] };
+  const retainedIds = new Set(submitted.flatMap((variant) => "id" in variant && variant.id ? [variant.id] : []));
+  const removedIds = (previous ?? []).map((variant) => variant.id).filter((id) => !retainedIds.has(id));
+  if (removedIds.length) {
+    const { error } = await service.from("product_color_variants").delete().in("id", removedIds).eq("product_id", productId);
+    if (error) return { error, previous: (previous ?? []) as SavedColorVariant[] };
+  }
+  return { error: null, previous: (previous ?? []) as SavedColorVariant[] };
+}
+
+function productImageStoragePath(url: string | null | undefined) {
+  const match = typeof url === "string" ? url.match(/\/storage\/v1\/object\/public\/product-images\/(.+)$/) : null;
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
 
 export async function signIn(formData: FormData) {
   if (!isSupabaseConfigured()) redirect("/admin?setup=1");
@@ -92,7 +169,6 @@ export async function updateAdminProfile(formData: FormData) {
 export async function createProduct(formData: FormData) {
   const { supabase, access } = await requireAdmin("products");
   const name = String(formData.get("name") ?? "").trim();
-  const slug = String(formData.get("slug") ?? "").trim().toLowerCase();
   const category = String(formData.get("category") ?? "").trim();
   const brand = String(formData.get("brand") ?? "").trim().slice(0, 80) || null;
   const price = Number(formData.get("price"));
@@ -100,23 +176,35 @@ export async function createProduct(formData: FormData) {
   const image = formData.get("image");
   const description = String(formData.get("description") ?? "").trim() || null;
 
-  if (!name || !slug || !category || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
+  if (!name || !category || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
     redirect("/admin/products/new?error=invalid");
   }
+  let slug: string;
+  try { slug = await generateProductSlug(name, supabase); } catch { redirect("/admin/products/new?error=save"); }
   if (!(image instanceof File) || image.size === 0) redirect("/admin/products/new?error=image");
   const extension = image.type === "image/jpeg" ? "jpg" : image.type === "image/png" ? "png" : image.type === "image/webp" ? "webp" : "";
   if (!extension || image.size > 5 * 1024 * 1024) redirect("/admin/products/new?error=image");
+  const { variants, uploadedPaths: variantPaths } = await uploadColorVariants(formData, supabase, "/admin/products/new");
   const imagePath = `products/${crypto.randomUUID()}.${extension}`;
   const { error: uploadError } = await supabase.storage.from("product-images").upload(imagePath, image, { contentType: image.type, upsert: false });
-  if (uploadError) redirect("/admin/products/new?error=upload");
+  if (uploadError) { if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths); redirect("/admin/products/new?error=upload"); }
   const imageUrl = supabase.storage.from("product-images").getPublicUrl(imagePath).data.publicUrl;
-  const { error } = await supabase.from("products").insert({
+  const { data: createdProduct, error } = await supabase.from("products").insert({
     name, slug, category, brand, price_pesewas: Math.round(price * 100), stock_quantity: stock,
     image_url: imageUrl, description, is_active: true,
-  });
+  }).select("id").single();
   if (error) {
     await supabase.storage.from("product-images").remove([imagePath]);
+    if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths);
     redirect(`/admin/products/new?error=${encodeURIComponent(error.code === "23505" ? "slug" : "save")}`);
+  }
+  if (createdProduct && variants.length) {
+    const result = await saveColorVariants(createdProduct.id, variants, supabase);
+    if (result.error) {
+      await supabase.from("products").delete().eq("id", createdProduct.id);
+      await supabase.storage.from("product-images").remove([imagePath, ...variantPaths]);
+      redirect("/admin/products/new?error=save");
+    }
   }
   await logAdminActivity({ actorId: access.userId, actorEmail: access.email, action: "product_created", entityType: "product", entityId: slug, summary: `Created product “${name}”.` });
   revalidatePath("/");
@@ -138,24 +226,44 @@ export async function updateProduct(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim() || null;
   const tag = String(formData.get("tag") ?? "").trim().slice(0, 50) || null;
   const isActive = String(formData.get("is_active")) === "true";
-  if (!/^[0-9a-f-]{36}$/i.test(id) || !name || !slug || !category || !Number.isFinite(price) || price <= 0 || (compareAt !== null && (!Number.isFinite(compareAt) || compareAt <= price))) redirect("/admin/products?error=invalid");
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || !category || !Number.isFinite(price) || price <= 0 || (compareAt !== null && (!Number.isFinite(compareAt) || compareAt <= price))) redirect("/admin/products?error=invalid");
+  const { data: before } = await supabase.from("products").select("slug,image_url").eq("id", id).maybeSingle();
   let imageUrl: string | undefined;
   let imagePath: string | null = null;
   if (image instanceof File && image.size > 0) {
     const extension = image.type === "image/jpeg" ? "jpg" : image.type === "image/png" ? "png" : image.type === "image/webp" ? "webp" : "";
     if (!extension || image.size > 5 * 1024 * 1024) redirect(`/admin/products/${id}?error=image`);
+  }
+  const { variants, uploadedPaths: variantPaths } = await uploadColorVariants(formData, supabase, `/admin/products/${id}`);
+  if (image instanceof File && image.size > 0) {
+    const extension = image.type === "image/jpeg" ? "jpg" : image.type === "image/png" ? "png" : "webp";
     imagePath = `products/${crypto.randomUUID()}.${extension}`;
     const { error: uploadError } = await supabase.storage.from("product-images").upload(imagePath, image, { contentType: image.type, upsert: false });
-    if (uploadError) redirect(`/admin/products/${id}?error=upload`);
+    if (uploadError) { if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths); redirect(`/admin/products/${id}?error=upload`); }
     imageUrl = supabase.storage.from("product-images").getPublicUrl(imagePath).data.publicUrl;
   }
   const { error } = await supabase.from("products").update({ name, slug, category, brand, price_pesewas: Math.round(price * 100), compare_at_pesewas: compareAt === null ? null : Math.round(compareAt * 100), ...(imageUrl ? { image_url: imageUrl } : {}), description, tag, is_active: isActive }).eq("id", id);
   if (error) {
     if (imagePath) await supabase.storage.from("product-images").remove([imagePath]);
+    if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths);
     redirect(`/admin/products/${id}?error=${encodeURIComponent(error.code === "23505" ? "slug" : "save")}`);
   }
+  const result = await saveColorVariants(id, variants, supabase);
+  if (result.error) {
+    if (imagePath) await supabase.storage.from("product-images").remove([imagePath]);
+    if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths);
+    redirect(`/admin/products/${id}?error=save`);
+  }
+  const retainedImages = new Set(variants.map((variant) => variant.image_url));
+  const removedVariantImages = result.previous.map((variant) => productImageStoragePath(variant.image_url)).filter((path): path is string => Boolean(path)).filter((path) => {
+    const previousUrl = result.previous.find((variant) => productImageStoragePath(variant.image_url) === path)?.image_url;
+    return Boolean(previousUrl && !retainedImages.has(previousUrl));
+  });
+  if (removedVariantImages.length) await supabase.storage.from("product-images").remove(removedVariantImages);
+  const oldProductImagePath = imageUrl ? productImageStoragePath(before?.image_url) : null;
+  if (oldProductImagePath) await supabase.storage.from("product-images").remove([oldProductImagePath]);
   await logAdminActivity({ actorId: access.userId, actorEmail: access.email, action: "product_updated", entityType: "product", entityId: id, summary: `Updated product “${name}”.` });
-  revalidatePath("/"); revalidatePath("/shop"); revalidatePath(`/products/${slug}`); revalidatePath("/admin/products"); revalidatePath("/admin");
+  revalidatePath("/"); revalidatePath("/shop"); revalidatePath(`/products/${slug}`); if (before?.slug && before.slug !== slug) revalidatePath(`/products/${before.slug}`); revalidatePath("/admin/products"); revalidatePath("/admin");
   redirect("/admin/products?updated=1");
 }
 
@@ -178,16 +286,16 @@ export async function deleteProduct(formData: FormData) {
 
   const { data: product, error: readError } = await supabase.from("products").select("name,slug,image_url").eq("id", id).maybeSingle();
   if (readError || !product) redirect("/admin/products?error=delete");
+  const { data: colorVariants, error: variantsError } = await createServiceClient().from("product_color_variants").select("image_url").eq("product_id", id);
+  if (variantsError) redirect("/admin/products?error=delete");
 
   const { error } = await supabase.from("products").delete().eq("id", id);
   if (error) redirect("/admin/products?error=delete");
 
-  const imagePath = typeof product.image_url === "string"
-    ? product.image_url.match(/\/storage\/v1\/object\/public\/product-images\/(.+)$/)?.[1]
-    : null;
-  if (imagePath) {
-    const { error: imageError } = await supabase.storage.from("product-images").remove([decodeURIComponent(imagePath)]);
-    if (imageError) console.error("Product deleted, but its stored image could not be removed.", imageError.message);
+  const imagePaths = [product.image_url, ...(colorVariants ?? []).map((variant) => variant.image_url)].map(productImageStoragePath).filter((path): path is string => Boolean(path));
+  if (imagePaths.length) {
+    const { error: imageError } = await supabase.storage.from("product-images").remove([...new Set(imagePaths)]);
+    if (imageError) console.error("Product deleted, but some stored images could not be removed.", imageError.message);
   }
 
   await logAdminActivity({ actorId: access.userId, actorEmail: access.email, action: "product_deleted", entityType: "product", entityId: id, summary: `Permanently deleted product “${product.name}”.` });
@@ -313,6 +421,15 @@ export async function clearSelectedStoreData(formData: FormData) {
       for (const row of data ?? []) {
         const path = typeof row.image_url === "string" ? row.image_url.match(/\/storage\/v1\/object\/public\/product-images\/(.+)$/)?.[1] : null;
         if (path) { try { productImagePaths.push(decodeURIComponent(path)); } catch { productImagePaths.push(path); } }
+      }
+      if (!data || data.length < 1000) break;
+    }
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await service.from("product_color_variants").select("image_url").range(offset, offset + 999);
+      if (error) redirect("/admin/settings?clearError=read");
+      for (const row of data ?? []) {
+        const path = productImageStoragePath(row.image_url);
+        if (path) productImagePaths.push(path);
       }
       if (!data || data.length < 1000) break;
     }

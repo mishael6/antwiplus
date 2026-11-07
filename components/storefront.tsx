@@ -39,7 +39,7 @@ export function ProductCard({ product }: { product: StoreProduct }) {
       {product.tag && <span className="product-tag">{product.tag}</span>}
     </Link>
     <div className="store-product-meta"><div>{product.brand && <span className="product-brand">{product.brand}</span>}<span className="product-category">{product.category}</span><Link href={`/products/${product.slug}`}><h3>{product.name}</h3></Link></div><span className="product-price">{formatPrice(product.price_pesewas)}</span></div>
-    <AddToCartButton product={product} />
+      <AddToCartButton product={product} variants={product.variants} />
   </article>;
 }
 

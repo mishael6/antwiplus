@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 
 export type CartProduct = {
   id: string;
@@ -12,7 +12,13 @@ export type CartProduct = {
   price_pesewas: number;
   image_url: string | null;
   stock_quantity: number;
+  variant_id?: string | null;
+  variant_name?: string | null;
+  variant_hex?: string | null;
+  cart_key?: string;
 };
+
+export type StoreColorVariant = { id: string; name: string; hex: string; image_url: string };
 
 type CartLine = { product: CartProduct; quantity: number };
 type CartContextValue = {
@@ -49,12 +55,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [lines, ready]);
 
   const add = useCallback((product: CartProduct) => setLines((current) => {
-    const found = current.find((line) => line.product.id === product.id);
-    if (found) return current.map((line) => line.product.id === product.id ? { ...line, product, quantity: Math.min(product.stock_quantity || 99, line.quantity + 1) } : line);
+    const key = product.cart_key ?? product.id;
+    const found = current.find((line) => (line.product.cart_key ?? line.product.id) === key);
+    if (found) return current.map((line) => (line.product.cart_key ?? line.product.id) === key ? { ...line, product, quantity: Math.min(product.stock_quantity || 99, line.quantity + 1) } : line);
     return [...current, { product, quantity: 1 }];
   }), []);
-  const setQuantity = useCallback((id: string, quantity: number) => setLines((current) => quantity < 1 ? current.filter((line) => line.product.id !== id) : current.map((line) => line.product.id === id ? { ...line, quantity: Math.min(line.product.stock_quantity || 99, quantity) } : line)), []);
-  const remove = useCallback((id: string) => setLines((current) => current.filter((line) => line.product.id !== id)), []);
+  const setQuantity = useCallback((id: string, quantity: number) => setLines((current) => quantity < 1 ? current.filter((line) => (line.product.cart_key ?? line.product.id) !== id) : current.map((line) => (line.product.cart_key ?? line.product.id) === id ? { ...line, quantity: Math.min(line.product.stock_quantity || 99, quantity) } : line)), []);
+  const remove = useCallback((id: string) => setLines((current) => current.filter((line) => (line.product.cart_key ?? line.product.id) !== id)), []);
   const clear = useCallback(() => setLines([]), []);
   const value = useMemo(() => ({ lines, ready, count: lines.reduce((sum, line) => sum + line.quantity, 0), subtotal: lines.reduce((sum, line) => sum + line.product.price_pesewas * line.quantity, 0), add, setQuantity, remove, clear }), [lines, ready, add, setQuantity, remove, clear]);
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
@@ -66,10 +73,13 @@ export function useCart() {
   return value;
 }
 
-export function AddToCartButton({ product }: { product: CartProduct }) {
+export function AddToCartButton({ product, variants = [], showVariantOptions = true, selectedVariantId, onVariantSelect }: { product: CartProduct; variants?: StoreColorVariant[]; showVariantOptions?: boolean; selectedVariantId?: string | null; onVariantSelect?: (variant: StoreColorVariant) => void }) {
   const { add } = useCart();
   const [added, setAdded] = useState(false);
-  return <button className="store-add-button" type="button" disabled={product.stock_quantity < 1} onClick={() => { add(product); setAdded(true); window.setTimeout(() => setAdded(false), 1300); }}>{product.stock_quantity < 1 ? "Sold out" : added ? "Added to cart ✓" : "Add to cart +"}</button>;
+  const [localSelected, setLocalSelected] = useState<StoreColorVariant | null>(variants[0] ?? null);
+  const selected = selectedVariantId ? variants.find((variant) => variant.id === selectedVariantId) ?? null : localSelected;
+  const selectedProduct = selected ? { ...product, image_url: selected.image_url, variant_id: selected.id, variant_name: selected.name, variant_hex: selected.hex, cart_key: `${product.id}:${selected.id}` } : product;
+  return <div className="add-product-actions">{showVariantOptions && variants.length > 0 && <fieldset className="product-color-choice"><legend>Color{selected ? `: ${selected.name}` : ""}</legend><div>{variants.map((variant) => <button key={variant.id} type="button" className={`product-color-swatch${selected?.id === variant.id ? " selected" : ""}`} style={{ "--swatch-color": variant.hex } as CSSProperties} onClick={() => { setLocalSelected(variant); onVariantSelect?.(variant); }} aria-label={`Choose ${variant.name}`} aria-pressed={selected?.id === variant.id}>{variant.image_url && <img src={variant.image_url} alt="" />}</button>)}</div></fieldset>}<button className="store-add-button" type="button" disabled={product.stock_quantity < 1 || (variants.length > 0 && !selected)} onClick={() => { add(selectedProduct); setAdded(true); window.setTimeout(() => setAdded(false), 1300); }}>{product.stock_quantity < 1 ? "Sold out" : added ? "Added to cart ✓" : "Add to cart +"}</button></div>;
 }
 
 export function CartCount() {
