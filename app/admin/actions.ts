@@ -172,11 +172,12 @@ export async function createProduct(formData: FormData) {
   const category = String(formData.get("category") ?? "").trim();
   const brand = String(formData.get("brand") ?? "").trim().slice(0, 80) || null;
   const price = Number(formData.get("price"));
+  const compareAt = String(formData.get("compare_at") ?? "").trim() ? Number(formData.get("compare_at")) : null;
   const stock = Number(formData.get("stock") ?? 0);
   const image = formData.get("image");
   const description = String(formData.get("description") ?? "").trim() || null;
 
-  if (!name || !category || !Number.isFinite(price) || price <= 0 || !Number.isInteger(stock) || stock < 0) {
+  if (!name || !category || !Number.isFinite(price) || price <= 0 || (compareAt !== null && (!Number.isFinite(compareAt) || compareAt <= price)) || !Number.isInteger(stock) || stock < 0) {
     redirect("/admin/products/new?error=invalid");
   }
   let slug: string;
@@ -184,13 +185,18 @@ export async function createProduct(formData: FormData) {
   if (!(image instanceof File) || image.size === 0) redirect("/admin/products/new?error=image");
   const extension = image.type === "image/jpeg" ? "jpg" : image.type === "image/png" ? "png" : image.type === "image/webp" ? "webp" : "";
   if (!extension || image.size > 5 * 1024 * 1024) redirect("/admin/products/new?error=image");
-  const { variants, uploadedPaths: variantPaths } = await uploadColorVariants(formData, supabase, "/admin/products/new");
+  const variantCount = Number(formData.get("variant_count") ?? 0);
+  const primaryColorName = String(formData.get("primary_color_name") ?? "").trim().slice(0, 40);
+  const primaryColorHex = String(formData.get("primary_color_hex") ?? "").trim();
+  if (!Number.isInteger(variantCount) || variantCount < 0 || variantCount > 10 || (variantCount > 0 && (!primaryColorName || !/^#[0-9a-f]{6}$/i.test(primaryColorHex)))) redirect("/admin/products/new?error=invalid");
+  if (variantCount > 0 && Array.from({ length: variantCount }, (_, index) => String(formData.get(`color_name_${index}`) ?? "").trim().toLowerCase()).includes(primaryColorName.toLowerCase())) redirect("/admin/products/new?error=invalid");
+  const { variants: extraVariants, uploadedPaths: variantPaths } = await uploadColorVariants(formData, supabase, "/admin/products/new");
   const imagePath = `products/${crypto.randomUUID()}.${extension}`;
   const { error: uploadError } = await supabase.storage.from("product-images").upload(imagePath, image, { contentType: image.type, upsert: false });
   if (uploadError) { if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths); redirect("/admin/products/new?error=upload"); }
   const imageUrl = supabase.storage.from("product-images").getPublicUrl(imagePath).data.publicUrl;
   const { data: createdProduct, error } = await supabase.from("products").insert({
-    name, slug, category, brand, price_pesewas: Math.round(price * 100), stock_quantity: stock,
+    name, slug, category, brand, price_pesewas: Math.round(price * 100), compare_at_pesewas: compareAt === null ? null : Math.round(compareAt * 100), stock_quantity: stock,
     image_url: imageUrl, description, is_active: true,
   }).select("id").single();
   if (error) {
@@ -198,6 +204,7 @@ export async function createProduct(formData: FormData) {
     if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths);
     redirect(`/admin/products/new?error=${encodeURIComponent(error.code === "23505" ? "slug" : "save")}`);
   }
+  const variants = extraVariants.length ? [{ name: primaryColorName, hex: primaryColorHex, image_url: imageUrl, sort_order: 0 }, ...extraVariants.map((variant) => ({ ...variant, sort_order: variant.sort_order + 1 }))] : [];
   if (createdProduct && variants.length) {
     const result = await saveColorVariants(createdProduct.id, variants, supabase);
     if (result.error) {

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import type { StoreProduct } from "@/lib/catalog";
-import { formatPrice, getStoreCategories } from "@/lib/catalog";
-import { AddToCartButton, CartCount } from "@/components/cart";
+import { getStoreCategories } from "@/lib/catalog";
+import { CartCount } from "@/components/cart";
+import { ProductCard } from "@/components/product-card";
 import { getStoreSettings } from "@/lib/store-settings";
 import { CategoryNav } from "@/components/category-nav";
 import { createClient } from "@/lib/supabase/server";
@@ -30,17 +31,6 @@ export async function StoreHeader() {
 export async function StoreFooter() {
   const settings = await getStoreSettings();
   return <footer className="site-footer store-footer"><Link className="wordmark footer-logo" href="/">antwi<span>+</span></Link><span>Thoughtful finds for everyday life.</span><nav><Link href="/track-order">Track an order</Link>{settings.support_email ? <Link href={`mailto:${settings.support_email}`}>Contact</Link> : <Link href="/contact">Contact</Link>}{settings.support_phone && <a href={`tel:${settings.support_phone.replace(/[^+\d]/g, "")}`}>Call us</a>}<Link href="/shipping-returns">Shipping & returns</Link><Link href="/admin">Store admin</Link></nav><span>© 2026 AntwiPlus</span></footer>;
-}
-
-export function ProductCard({ product }: { product: StoreProduct }) {
-  return <article className="store-product-card">
-    <Link className="store-product-image" href={`/products/${product.slug}`} style={product.image_url ? { backgroundImage: `url("${product.image_url}")` } : undefined} aria-label={`View ${product.name}`}>
-      {!product.image_url && <span aria-hidden="true" className="product-placeholder">{product.category.toLowerCase().includes("luggage") || product.category.toLowerCase().includes("travel") ? "◈" : "◒"}</span>}
-      {product.tag && <span className="product-tag">{product.tag}</span>}
-    </Link>
-    <div className="store-product-meta"><div>{product.brand && <span className="product-brand">{product.brand}</span>}<span className="product-category">{product.category}</span><Link href={`/products/${product.slug}`}><h3>{product.name}</h3></Link></div><span className="product-price">{formatPrice(product.price_pesewas)}</span></div>
-      <AddToCartButton product={product} variants={product.variants} />
-  </article>;
 }
 
 export function ProductGrid({ products }: { products: StoreProduct[] }) {
