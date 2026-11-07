@@ -6,6 +6,7 @@ import { ProductCard } from "@/components/product-card";
 import { getStoreSettings } from "@/lib/store-settings";
 import { CategoryNav } from "@/components/category-nav";
 import { createClient } from "@/lib/supabase/server";
+import { StoreIcon } from "@/components/store-icon";
 
 export async function StoreHeader() {
   const [settings, categories, customer] = await Promise.all([
@@ -34,6 +35,6 @@ export async function StoreFooter() {
 }
 
 export function ProductGrid({ products }: { products: StoreProduct[] }) {
-  if (!products.length) return <div className="store-empty"><span>✳</span><h2>Your next favourite is on its way.</h2><p>We’re getting the shop ready. Please check back soon.</p></div>;
+  if (!products.length) return <div className="store-empty"><span><StoreIcon name="sparkle" /></span><h2>Your next favourite is on its way.</h2><p>We’re getting the shop ready. Please check back soon.</p></div>;
   return <div className="store-product-grid">{products.map((product) => <ProductCard product={product} key={product.id} />)}</div>;
 }

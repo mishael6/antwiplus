@@ -1,5 +1,7 @@
 "use client";
 
+import { ArrowIcon } from "@/components/arrow-icon";
+
 import { useActionState } from "react";
 import { trackGuestOrder, type TrackedOrder, type TrackingState } from "@/app/track-order/actions";
 import { formatDateTime } from "@/lib/date-format";
@@ -14,7 +16,7 @@ function OrderProgress({ order }: { order: TrackedOrder }) {
   return <section className="guest-tracking-result" aria-live="polite">
     <div className="guest-tracking-header"><div><p className="admin-kicker">ORDER {order.reference}</p><h2>{statusLabels[order.status] ?? order.status}</h2></div><span className={`status-pill ${order.status === "delivered" ? "live" : "draft"}`}>{statusLabels[order.status] ?? order.status}</span></div>
     <p className="tracking-placed-date">Placed {formatDateTime(order.created_at)}</p>
-    {(order.carrier || order.tracking_code || order.tracking_url) && <div className="tracking-carrier">{order.carrier && <b>{order.carrier}</b>}{order.tracking_code && <span>Tracking number: <b>{order.tracking_code}</b></span>}{order.tracking_url && <a href={order.tracking_url} target="_blank" rel="noreferrer">Open courier tracking ↗</a>}</div>}
+    {(order.carrier || order.tracking_code || order.tracking_url) && <div className="tracking-carrier">{order.carrier && <b>{order.carrier}</b>}{order.tracking_code && <span>Tracking number: <b>{order.tracking_code}</b></span>}{order.tracking_url && <a href={order.tracking_url} target="_blank" rel="noreferrer">Open courier tracking <ArrowIcon /></a>}</div>}
     <ol className="tracking-timeline">{order.events.map((event, index) => <li className={index === order.events.length - 1 ? "current" : ""} key={`${event.status}-${event.created_at}`}><span className="tracking-dot" /><div><b>{statusLabels[event.status] ?? event.status}</b>{event.note && <p>{event.note}</p>}<time>{formatDateTime(event.created_at)}</time></div></li>)}</ol>
     <p className="tracking-help">Need a hand? <a href="/contact">Contact AntwiPlus support</a> and include your order reference.</p>
   </section>;
@@ -29,7 +31,7 @@ export function GuestOrderTracker() {
     {state.error === "not_found" && <p className="checkout-error" role="alert">We couldn’t find an order with those details. Check them and try again.</p>}
     {state.error === "rate_limited" && <p className="checkout-error" role="alert">Too many attempts. Please wait 15 minutes before trying again.</p>}
     {state.error === "service" && <p className="checkout-error" role="alert">Tracking is temporarily unavailable. Please try again later.</p>}
-    <button className="store-primary-button full-button" disabled={pending} type="submit">{pending ? "Looking up your order…" : "Track my order"} <span>↗</span></button>
+    <button className="store-primary-button full-button" disabled={pending} type="submit">{pending ? "Looking up your order…" : "Track my order"} <span><ArrowIcon /></span></button>
     <small>We use these details only to find your order. Your delivery address and other personal details are not shown here.</small>
   </form>{state.order && <OrderProgress order={state.order} />}</div>;
 }

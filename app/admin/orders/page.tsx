@@ -1,3 +1,4 @@
+import { ArrowIcon } from "@/components/arrow-icon";
 import Link from "next/link";
 import { AdminShell } from "@/components/admin-shell";
 import { AdminOrderFulfillment } from "@/components/admin-order-fulfillment";
@@ -30,14 +31,14 @@ export default async function AdminOrdersPage({ searchParams }: { searchParams: 
   });
 
   return <AdminShell active="orders" access={access}><div className="admin-content admin-orders-page">
-    <div className="admin-page-title"><div><p className="admin-kicker">CUSTOMER ACTIVITY</p><h1>Orders.</h1><p>Manage purchases, delivery progress, and customer updates in one place.</p></div><Link className="admin-secondary-button orders-report-link" href="/admin/reports">View sales reports <span>↗</span></Link></div>
+    <div className="admin-page-title"><div><p className="admin-kicker">CUSTOMER ACTIVITY</p><h1>Orders.</h1><p>Manage purchases, delivery progress, and customer updates in one place.</p></div><Link className="admin-secondary-button orders-report-link" href="/admin/reports">View sales reports <span><ArrowIcon /></span></Link></div>
     {query.updated && <p className="admin-notice success" role="status">Order tracking details saved.</p>}
     {query.error && <p className="admin-notice error" role="alert">{query.error === "invalid" ? "Check the status and use a valid HTTPS tracking link." : "Could not update this order. Please try again."}</p>}
 
     <section className="orders-summary" aria-label="Order summary">
       <article><span className="orders-summary-icon total">▤</span><div><small>Recent orders</small><b>{orders.length}</b><span>Latest 100 orders</span></div></article>
       <article><span className="orders-summary-icon awaiting">◷</span><div><small>Awaiting action</small><b>{awaiting}</b><span>Received, confirmed, or paid</span></div></article>
-      <article><span className="orders-summary-icon moving">↗</span><div><small>In fulfillment</small><b>{inFulfillment}</b><span>Being prepared or delivered</span></div></article>
+      <article><span className="orders-summary-icon moving"><ArrowIcon /></span><div><small>In fulfillment</small><b>{inFulfillment}</b><span>Being prepared or delivered</span></div></article>
       <article><span className="orders-summary-icon delivered">✓</span><div><small>Delivered</small><b>{completed}</b><span>Successfully completed</span></div></article>
     </section>
 

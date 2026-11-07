@@ -1,3 +1,4 @@
+import { ArrowIcon } from "@/components/arrow-icon";
 import Link from "next/link";
 import { getStoreProducts } from "@/lib/catalog";
 import { ProductGrid, StoreFooter, StoreHeader } from "@/components/storefront";
@@ -17,6 +18,6 @@ export default async function ShopPage({ searchParams }: { searchParams: Promise
   const categories = Array.from(new Set(products.map((product) => product.category)));
   return <><StoreHeader /><main className="store-page-shell"><p className="store-breadcrumb"><Link href="/">Home</Link> / Shop</p><div className="store-page-heading"><p className="admin-kicker">{activeCollection === "offers" ? "LIMITED-TIME SAVINGS" : activeCollection === "new" ? "JUST ADDED TO THE COLLECTION" : "THE ANTWIPLUS COLLECTION"}</p><h1>{searchTerm ? <>Search results.</> : activeCollection === "offers" ? <>Special <em>offers.</em></> : activeCollection === "new" ? <>New <em>arrivals.</em></> : <>Find your <em>next favourite.</em></>}</h1><p>{searchTerm ? `${visible.length} result${visible.length === 1 ? "" : "s"} for “${searchTerm}”.` : activeCollection === "offers" ? "Explore products currently marked down in the AntwiPlus collection." : activeCollection === "new" ? "Discover the latest products added to the AntwiPlus collection." : "Explore considered finds across fashion, technology, home, travel, and more."}</p></div>
     <nav className="shop-filters" aria-label="Filter products"><Link className={!activeCategory ? "selected" : ""} href={searchTerm ? `/shop?q=${encodeURIComponent(searchTerm)}` : "/shop"}>All items</Link>{categories.map((name) => <Link className={activeCategory === name ? "selected" : ""} key={name} href={`/shop?category=${encodeURIComponent(name)}${searchTerm ? `&q=${encodeURIComponent(searchTerm)}` : ""}`}>{name}</Link>)}</nav>
-    {visible.length ? <ProductGrid products={visible} /> : <div className="store-empty"><span>⌕</span><h2>{searchTerm ? `No products found for “${searchTerm}”.` : "No products in this category yet."}</h2><p>Try a different search or browse all AntwiPlus products.</p><Link className="store-primary-button" href="/shop">Browse all products <span>↗</span></Link></div>}
+    {visible.length ? <ProductGrid products={visible} /> : <div className="store-empty"><span>⌕</span><h2>{searchTerm ? `No products found for “${searchTerm}”.` : "No products in this category yet."}</h2><p>Try a different search or browse all AntwiPlus products.</p><Link className="store-primary-button" href="/shop">Browse all products <span><ArrowIcon /></span></Link></div>}
   </main><StoreFooter /></>;
 }

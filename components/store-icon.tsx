@@ -1,9 +1,10 @@
 import type { ReactNode, SVGProps } from "react";
 
-export type StoreIconName = "sparkle" | "arrow" | "chevronDown" | "chevronRight" | "menu" | "delivery" | "support" | "fashion" | "technology" | "home" | "travel" | "beauty" | "sports" | "book" | "gift" | "grid";
+export type StoreIconName = "sparkle" | "heart" | "arrow" | "chevronDown" | "chevronRight" | "menu" | "delivery" | "support" | "fashion" | "technology" | "home" | "travel" | "beauty" | "sports" | "book" | "gift" | "grid";
 
 const paths: Record<StoreIconName, ReactNode> = {
   sparkle: <><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></>,
+  heart: <path d="M20.8 8.7c0 5.3-8.8 11-8.8 11S3.2 14 3.2 8.7A4.5 4.5 0 0 1 12 6.5a4.5 4.5 0 0 1 8.8 2.2Z"/>,
   arrow: <><path d="M7 17 17 7"/><path d="M8 7h9v9"/></>,
   chevronDown: <path d="m6 9 6 6 6-6"/>,
   chevronRight: <path d="m9 6 6 6-6 6"/>,

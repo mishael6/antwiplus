@@ -1,5 +1,7 @@
 "use client";
 
+import { ArrowIcon } from "@/components/arrow-icon";
+
 import Link from "next/link";
 import { useState } from "react";
 import { AddToCartButton, type StoreColorVariant } from "@/components/cart";
@@ -15,7 +17,7 @@ export function ProductCard({ product }: { product: StoreProduct }) {
       {product.tag && <span className="product-tag">{product.tag}</span>}
     </Link>
     <div className="store-product-meta"><div>{product.brand && <span className="product-brand">{product.brand}</span>}<span className="product-category">{product.category}</span><Link href={`/products/${product.slug}`}><h3>{product.name}</h3></Link></div><span className="product-price">{formatPrice(product.price_pesewas)}</span></div>
-    <Link className="product-view-details" href={`/products/${product.slug}`}>View details <span>↗</span></Link>
+    <Link className="product-view-details" href={`/products/${product.slug}`}>View details <span><ArrowIcon /></span></Link>
     <AddToCartButton product={product} variants={product.variants} selectedVariantId={selectedVariant?.id ?? null} onVariantSelect={setSelectedVariant} />
   </article>;
 }
