@@ -1,10 +1,13 @@
 import type { ReactNode, SVGProps } from "react";
 
-export type StoreIconName = "sparkle" | "arrow" | "delivery" | "support" | "fashion" | "technology" | "home" | "travel" | "beauty" | "sports" | "book" | "gift" | "grid";
+export type StoreIconName = "sparkle" | "arrow" | "chevronDown" | "chevronRight" | "menu" | "delivery" | "support" | "fashion" | "technology" | "home" | "travel" | "beauty" | "sports" | "book" | "gift" | "grid";
 
 const paths: Record<StoreIconName, ReactNode> = {
   sparkle: <><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15Z"/></>,
   arrow: <><path d="M7 17 17 7"/><path d="M8 7h9v9"/></>,
+  chevronDown: <path d="m6 9 6 6 6-6"/>,
+  chevronRight: <path d="m9 6 6 6-6 6"/>,
+  menu: <><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/></>,
   delivery: <><path d="M3 7h11v11H3z"/><path d="M14 11h4l3 3v4h-7z"/><circle cx="7.5" cy="18.5" r="1.5"/><circle cx="17.5" cy="18.5" r="1.5"/></>,
   support: <><path d="M4 13v-1a8 8 0 0 1 16 0v1"/><path d="M4 13h3v6H6a2 2 0 0 1-2-2v-4Zm16 0h-3v6h1a2 2 0 0 0 2-2v-4Z"/><path d="M17 19a5 5 0 0 1-5 2"/></>,
   fashion: <><path d="m8 5 4-2 4 2 4 3-2 4-2-1v10H8V11l-2 1-2-4 4-3Z"/><path d="M9 6c.5 2 1.5 3 3 3s2.5-1 3-3"/></>,
