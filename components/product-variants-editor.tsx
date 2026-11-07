@@ -21,16 +21,15 @@ function VariantImage({ index, initialUrl }: { index: number; initialUrl?: strin
   </div>;
 }
 
-export function ProductVariantsEditor({ initialVariants = [], includeMainPhoto = false }: { initialVariants?: Variant[]; includeMainPhoto?: boolean }) {
+export function ProductVariantsEditor({ initialVariants = [] }: { initialVariants?: Variant[] }) {
   const [variants, setVariants] = useState<Variant[]>(initialVariants);
   function update(index: number, changes: Partial<Variant>) {
     setVariants((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, ...changes } : item));
   }
   function remove(index: number) { setVariants((items) => items.filter((_, itemIndex) => itemIndex !== index)); }
   return <section className="admin-panel product-variants-panel">
-    <div className="admin-panel-heading"><div><p className="admin-kicker">OPTIONAL PRODUCT OPTIONS</p><h2>Colors and photos</h2></div><span className="variant-count">{variants.length + (includeMainPhoto && variants.length ? 1 : 0)} {variants.length + (includeMainPhoto && variants.length ? 1 : 0) === 1 ? "color" : "colors"}</span></div>
-    <p className="variant-help">Add each available color with its own photo. On a new product, the main product photo is included as the first selectable color whenever you add other colors.</p>
-    {includeMainPhoto && <div className="main-photo-color-fields"><div><b>Main product photo</b><small>This uploaded photo becomes the first color option whenever you add other colors. Give it a color name then.</small></div><div className="variant-fields"><label>Color name<input name="primary_color_name" maxLength={40} placeholder="e.g. Black" /></label><label>Color swatch<span className="color-input-wrap"><input name="primary_color_hex" aria-label="Main photo color swatch" type="color" defaultValue="#245b86" /><small>#245b86</small></span></label></div></div>}
+    <div className="admin-panel-heading"><div><p className="admin-kicker">OPTIONAL PRODUCT OPTIONS</p><h2>Colors and photos</h2></div><span className="variant-count">{variants.length} {variants.length === 1 ? "color" : "colors"}</span></div>
+    <p className="variant-help">Add each additional available color with its own photo. The main product photo appears first when you add color options.</p>
     <input type="hidden" name="variant_count" value={variants.length} />
     <div className="product-variant-list">{variants.map((variant, index) => <article className="product-variant-card" key={`${variant.id ?? "new"}-${index}`}>
       <input type="hidden" name={`color_id_${index}`} value={variant.id ?? ""} />
