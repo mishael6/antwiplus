@@ -9,20 +9,21 @@ import { logAdminActivity } from "@/lib/admin-activity";
 import { sendOrderUpdateEmail } from "@/lib/store-email";
 import { slugifyProductName } from "@/lib/product-slug";
 
-type SavedColorVariant = { id?: string; name: string; hex: string; image_url: string; sort_order: number };
+type SavedColorVariant = { id?: string; name: string; hex: string; image_url: string; sort_order: number; stock_quantity: number };
 
 async function uploadColorVariants(formData: FormData, supabase: Awaited<ReturnType<typeof createClient>>, errorPath: string): Promise<{ variants: SavedColorVariant[]; uploadedPaths: string[] }> {
   const count = Number(formData.get("variant_count") ?? 0);
   if (!Number.isInteger(count) || count < 0 || count > 10) redirect(`${errorPath}?error=invalid`);
-  const prepared: { id?: string; name: string; hex: string; existingUrl: string; image: File | null }[] = [];
+  const prepared: { id?: string; name: string; hex: string; existingUrl: string; image: File | null; stockQuantity: number }[] = [];
   const seen = new Set<string>();
   for (let index = 0; index < count; index++) {
     const name = String(formData.get(`color_name_${index}`) ?? "").trim().slice(0, 40);
     const hex = String(formData.get(`color_hex_${index}`) ?? "").trim();
     const existingUrl = String(formData.get(`color_existing_image_${index}`) ?? "").trim();
+    const stockQuantity = Number(formData.get(`color_stock_${index}`) ?? 0);
     const rawImage = formData.get(`color_image_${index}`);
     const image = rawImage instanceof File && rawImage.size > 0 ? rawImage : null;
-    if (!name || !/^#[0-9a-f]{6}$/i.test(hex) || seen.has(name.toLowerCase())) redirect(`${errorPath}?error=invalid`);
+    if (!name || !/^#[0-9a-f]{6}$/i.test(hex) || !Number.isInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 1000000 || seen.has(name.toLowerCase())) redirect(`${errorPath}?error=invalid`);
     seen.add(name.toLowerCase());
     if (image) {
       const extension = image.type === "image/jpeg" ? "jpg" : image.type === "image/png" ? "png" : image.type === "image/webp" ? "webp" : "";
@@ -30,7 +31,7 @@ async function uploadColorVariants(formData: FormData, supabase: Awaited<ReturnT
     }
     if (!image && !existingUrl) redirect(`${errorPath}?error=invalid`);
     const id = String(formData.get(`color_id_${index}`) ?? "");
-    prepared.push({ ...( /^[0-9a-f-]{36}$/i.test(id) ? { id } : {} ), name, hex, existingUrl, image });
+    prepared.push({ ...( /^[0-9a-f-]{36}$/i.test(id) ? { id } : {} ), name, hex, existingUrl, image, stockQuantity });
   }
   const variants: SavedColorVariant[] = [];
   const uploadedPaths: string[] = [];
@@ -47,7 +48,7 @@ async function uploadColorVariants(formData: FormData, supabase: Awaited<ReturnT
       uploadedPaths.push(path);
       imageUrl = supabase.storage.from("product-images").getPublicUrl(path).data.publicUrl;
     }
-    variants.push({ ...(item.id ? { id: item.id } : {}), name: item.name, hex: item.hex, image_url: imageUrl, sort_order: index });
+    variants.push({ ...(item.id ? { id: item.id } : {}), name: item.name, hex: item.hex, image_url: imageUrl, sort_order: index, stock_quantity: item.stockQuantity });
   }
   return { variants, uploadedPaths };
 }
@@ -65,7 +66,7 @@ async function generateProductSlug(name: string, supabase: Awaited<ReturnType<ty
 
 async function saveColorVariants(productId: string, variants: SavedColorVariant[], supabase: Awaited<ReturnType<typeof createClient>>) {
   const service = createServiceClient();
-  const { data: previous, error: readError } = await service.from("product_color_variants").select("id,name,hex,image_url,sort_order").eq("product_id", productId);
+  const { data: previous, error: readError } = await service.from("product_color_variants").select("id,name,hex,image_url,sort_order,stock_quantity").eq("product_id", productId);
   if (readError) return { error: readError, previous: [] as SavedColorVariant[] };
   const existingIds = new Set((previous ?? []).map((variant) => variant.id));
   const submitted = variants.map(({ id, ...variant }) => ({ ...variant, id: id && existingIds.has(id) ? id : crypto.randomUUID(), product_id: productId }));
@@ -204,10 +205,16 @@ export async function createProduct(formData: FormData) {
     if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths);
     redirect(`/admin/products/new?error=${encodeURIComponent(error.code === "23505" ? "slug" : "save")}`);
   }
-  const variants = [{ name: primaryColorName, hex: primaryColorHex, image_url: imageUrl, sort_order: 0 }, ...extraVariants.map((variant) => ({ ...variant, sort_order: variant.sort_order + 1 }))];
+  const variants = [{ name: primaryColorName, hex: primaryColorHex, image_url: imageUrl, sort_order: 0, stock_quantity: stock }, ...extraVariants.map((variant) => ({ ...variant, sort_order: variant.sort_order + 1 }))];
   if (createdProduct) {
     const result = await saveColorVariants(createdProduct.id, variants, supabase);
     if (result.error) {
+      await supabase.from("products").delete().eq("id", createdProduct.id);
+      await supabase.storage.from("product-images").remove([imagePath, ...variantPaths]);
+      redirect("/admin/products/new?error=save");
+    }
+    const { error: stockSyncError } = await createServiceClient().from("products").update({ stock_quantity: variants.reduce((sum, variant) => sum + variant.stock_quantity, 0) }).eq("id", createdProduct.id);
+    if (stockSyncError) {
       await supabase.from("products").delete().eq("id", createdProduct.id);
       await supabase.storage.from("product-images").remove([imagePath, ...variantPaths]);
       redirect("/admin/products/new?error=save");
@@ -261,6 +268,13 @@ export async function updateProduct(formData: FormData) {
     if (imagePath) await supabase.storage.from("product-images").remove([imagePath]);
     if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths);
     redirect(`/admin/products/${id}?error=variants`);
+  }
+  if (variants.length) {
+    const { error: stockSyncError } = await createServiceClient().from("products").update({ stock_quantity: variants.reduce((sum, variant) => sum + variant.stock_quantity, 0) }).eq("id", id);
+    if (stockSyncError) {
+      console.error("[product-update] Product stock total could not be synchronized", { productId: id, code: stockSyncError.code, message: stockSyncError.message });
+      redirect(`/admin/products/${id}?error=variants`);
+    }
   }
   const retainedImages = new Set(variants.map((variant) => variant.image_url));
   const removedVariantImages = result.previous.map((variant) => productImageStoragePath(variant.image_url)).filter((path): path is string => Boolean(path)).filter((path) => {

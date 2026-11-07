@@ -20,8 +20,8 @@ export async function getStoreProducts(): Promise<StoreProduct[]> {
       .eq("is_active", true).order("created_at", { ascending: false });
     if (error || !data) return [];
     if (!data.length) return [];
-    const { data: variants } = await supabase.from("product_color_variants").select("id,product_id,name,hex,image_url,sort_order,created_at").in("product_id", data.map((product) => product.id)).order("sort_order", { ascending: true }).order("created_at", { ascending: true });
-    return data.map((product) => ({ ...product, variants: (variants ?? []).filter((variant) => variant.product_id === product.id).map(({ id, name, hex, image_url }) => ({ id, name, hex, image_url })) })) as StoreProduct[];
+    const { data: variants } = await supabase.from("product_color_variants").select("id,product_id,name,hex,image_url,stock_quantity,sort_order,created_at").in("product_id", data.map((product) => product.id)).order("sort_order", { ascending: true }).order("created_at", { ascending: true });
+    return data.map((product) => ({ ...product, variants: (variants ?? []).filter((variant) => variant.product_id === product.id).map(({ id, name, hex, image_url, stock_quantity }) => ({ id, name, hex, image_url, stock_quantity })) })) as StoreProduct[];
   } catch {
     return [];
   }

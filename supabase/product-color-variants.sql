@@ -7,6 +7,7 @@ create table if not exists public.product_color_variants (
   name text not null check (length(trim(name)) between 1 and 40),
   hex text not null check (hex ~ '^#[0-9A-Fa-f]{6}$'),
   image_url text not null,
+  stock_quantity integer not null default 0 check (stock_quantity >= 0),
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   unique (product_id, name)
@@ -17,6 +18,8 @@ alter table public.product_color_variants
   alter column id set default gen_random_uuid();
 
 create index if not exists product_color_variants_product_sort_idx on public.product_color_variants(product_id, sort_order);
+alter table public.product_color_variants
+  add column if not exists stock_quantity integer;
 
 -- Backfill each existing product's main photo as its first selectable color.
 -- New products are also saved this way by the application.
@@ -34,19 +37,43 @@ set sort_order = v.sort_order + 1
 from products_missing_main_photo missing
 where v.product_id = missing.id;
 
-insert into public.product_color_variants (product_id, name, hex, image_url, sort_order)
+insert into public.product_color_variants (product_id, name, hex, image_url, stock_quantity, sort_order)
 select p.id,
   case when exists (
     select 1 from public.product_color_variants existing
     where existing.product_id = p.id and existing.name = 'Main photo'
   ) then 'Main photo (' || left(p.id::text, 6) || ')' else 'Main photo' end,
-  '#245b86', p.image_url, 0
+  '#245b86', p.image_url, p.stock_quantity, 0
 from public.products p
 where p.image_url is not null
   and not exists (
     select 1 from public.product_color_variants v
     where v.product_id = p.id and v.image_url = p.image_url
   );
+
+-- Preserve each legacy product's stock on its main photo color; other old colors
+-- start at zero until the admin assigns their individual quantities.
+with ranked_variants as (
+  select v.id, p.stock_quantity as product_stock,
+    row_number() over (partition by v.product_id order by (v.image_url = p.image_url) desc, v.sort_order, v.created_at, v.id) as color_rank
+  from public.product_color_variants v
+  join public.products p on p.id = v.product_id
+)
+update public.product_color_variants v
+set stock_quantity = case when ranked.color_rank = 1 then ranked.product_stock else 0 end
+from ranked_variants ranked
+where v.id = ranked.id and v.stock_quantity is null;
+
+alter table public.product_color_variants
+  alter column stock_quantity set default 0,
+  alter column stock_quantity set not null;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'product_color_variants_stock_quantity_check') then
+    alter table public.product_color_variants
+      add constraint product_color_variants_stock_quantity_check check (stock_quantity >= 0);
+  end if;
+end $$;
 
 alter table public.product_color_variants enable row level security;
 grant select on public.product_color_variants to anon, authenticated;
@@ -124,15 +151,16 @@ begin
     v_seen := array_append(v_seen, v_item_key);
 
     select * into v_product from public.products where id = v_product_id and is_active = true for update;
-    if not found or v_product.stock_quantity < v_quantity then
-      raise exception 'One or more products are out of stock';
-    end if;
+    if not found then raise exception 'Product is unavailable'; end if;
     select exists(select 1 from public.product_color_variants where product_id = v_product_id) into v_product_has_variants;
     if v_variant_id is not null then
-      select * into v_variant from public.product_color_variants where id = v_variant_id and product_id = v_product_id;
+      select * into v_variant from public.product_color_variants where id = v_variant_id and product_id = v_product_id for update;
       if not found then raise exception 'Selected product color is unavailable'; end if;
+      if v_variant.stock_quantity < v_quantity then raise exception 'Selected product color is out of stock'; end if;
     elsif v_product_has_variants then
       raise exception 'Please choose a product color';
+    elsif v_product.stock_quantity < v_quantity then
+      raise exception 'One or more products are out of stock';
     end if;
 
     v_total := v_total + v_product.price_pesewas * v_quantity;
@@ -142,7 +170,12 @@ begin
       'variant_id', v_variant.id, 'variant_name', v_variant.name,
       'variant_hex', v_variant.hex, 'variant_image_url', v_variant.image_url
     ));
-    update public.products set stock_quantity = stock_quantity - v_quantity where id = v_product.id;
+    if v_variant_id is not null then
+      update public.product_color_variants set stock_quantity = stock_quantity - v_quantity where id = v_variant.id;
+      update public.products set stock_quantity = greatest(0, stock_quantity - v_quantity) where id = v_product.id;
+    else
+      update public.products set stock_quantity = stock_quantity - v_quantity where id = v_product.id;
+    end if;
   end loop;
 
   if nullif(trim(p_discount_code), '') is not null then

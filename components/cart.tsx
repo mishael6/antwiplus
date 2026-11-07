@@ -19,7 +19,7 @@ export type CartProduct = {
   variants?: StoreColorVariant[];
 };
 
-export type StoreColorVariant = { id: string; name: string; hex: string; image_url: string };
+export type StoreColorVariant = { id: string; name: string; hex: string; image_url: string; stock_quantity: number };
 
 type CartLine = { product: CartProduct; quantity: number };
 type CartContextValue = {
@@ -57,12 +57,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, [lines, ready]);
 
   const add = useCallback((product: CartProduct) => setLines((current) => {
+    if (product.stock_quantity < 1) return current;
     const key = product.cart_key ?? product.id;
     const found = current.find((line) => (line.product.cart_key ?? line.product.id) === key);
-    if (found) return current.map((line) => (line.product.cart_key ?? line.product.id) === key ? { ...line, product, quantity: Math.min(product.stock_quantity || 99, line.quantity + 1) } : line);
+    if (found) return current.map((line) => (line.product.cart_key ?? line.product.id) === key ? { ...line, product, quantity: Math.min(product.stock_quantity, line.quantity + 1) } : line);
     return [...current, { product, quantity: 1 }];
   }), []);
-  const setQuantity = useCallback((id: string, quantity: number) => setLines((current) => quantity < 1 ? current.filter((line) => (line.product.cart_key ?? line.product.id) !== id) : current.map((line) => (line.product.cart_key ?? line.product.id) === id ? { ...line, quantity: Math.min(line.product.stock_quantity || 99, quantity) } : line)), []);
+  const setQuantity = useCallback((id: string, quantity: number) => setLines((current) => quantity < 1 ? current.filter((line) => (line.product.cart_key ?? line.product.id) !== id) : current.map((line) => (line.product.cart_key ?? line.product.id) === id ? { ...line, quantity: Math.min(Math.max(1, line.product.stock_quantity), quantity) } : line)), []);
   const remove = useCallback((id: string) => setLines((current) => current.filter((line) => (line.product.cart_key ?? line.product.id) !== id)), []);
   const changeVariant = useCallback((cartKey: string, variantId: string) => setLines((current) => {
     const line = current.find((item) => (item.product.cart_key ?? item.product.id) === cartKey);
@@ -71,9 +72,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const nextKey = `${line.product.id}:${variant.id}`;
     const existing = current.find((item) => (item.product.cart_key ?? item.product.id) === nextKey);
     if (existing && nextKey !== cartKey) {
-      return current.filter((item) => (item.product.cart_key ?? item.product.id) !== cartKey).map((item) => (item.product.cart_key ?? item.product.id) === nextKey ? { ...item, quantity: Math.min(item.product.stock_quantity || 99, item.quantity + line.quantity) } : item);
+      return current.filter((item) => (item.product.cart_key ?? item.product.id) !== cartKey).map((item) => (item.product.cart_key ?? item.product.id) === nextKey ? { ...item, product: { ...item.product, image_url: variant.image_url, variant_id: variant.id, variant_name: variant.name, variant_hex: variant.hex, stock_quantity: variant.stock_quantity, cart_key: nextKey }, quantity: Math.min(Math.max(1, variant.stock_quantity), item.quantity + line.quantity) } : item);
     }
-    return current.map((item) => (item.product.cart_key ?? item.product.id) === cartKey ? { ...item, product: { ...item.product, image_url: variant.image_url, variant_id: variant.id, variant_name: variant.name, variant_hex: variant.hex, cart_key: nextKey } } : item);
+    return current.map((item) => (item.product.cart_key ?? item.product.id) === cartKey ? { ...item, product: { ...item.product, image_url: variant.image_url, variant_id: variant.id, variant_name: variant.name, variant_hex: variant.hex, stock_quantity: variant.stock_quantity, cart_key: nextKey }, quantity: Math.min(Math.max(1, variant.stock_quantity), item.quantity) } : item);
   }), []);
   const clear = useCallback(() => setLines([]), []);
   const value = useMemo(() => ({ lines, ready, count: lines.reduce((sum, line) => sum + line.quantity, 0), subtotal: lines.reduce((sum, line) => sum + line.product.price_pesewas * line.quantity, 0), add, setQuantity, remove, changeVariant, clear }), [lines, ready, add, setQuantity, remove, changeVariant, clear]);
@@ -91,8 +92,9 @@ export function AddToCartButton({ product, variants = [], showVariantOptions = t
   const [added, setAdded] = useState(false);
   const [localSelected, setLocalSelected] = useState<StoreColorVariant | null>(variants[0] ?? null);
   const selected = selectedVariantId ? variants.find((variant) => variant.id === selectedVariantId) ?? null : localSelected;
-  const selectedProduct = selected ? { ...product, variants, image_url: selected.image_url, variant_id: selected.id, variant_name: selected.name, variant_hex: selected.hex, cart_key: `${product.id}:${selected.id}` } : product;
-  return <div className="add-product-actions">{showVariantOptions && variants.length > 0 && <fieldset className="product-color-choice"><legend>Available colors{selected ? ` · Selected: ${selected.name}` : ""}</legend><div>{variants.map((variant) => <button key={variant.id} type="button" className={`product-color-swatch${selected?.id === variant.id ? " selected" : ""}`} style={{ "--swatch-color": variant.hex } as CSSProperties} onClick={() => { setLocalSelected(variant); onVariantSelect?.(variant); if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("antwiplus:product-color-selected", { detail: { productId: product.id, variantId: variant.id } })); }} aria-label={`Choose ${variant.name}`} aria-pressed={selected?.id === variant.id} title={variant.name}>{variant.image_url && <img src={variant.image_url} alt="" />}<span>{variant.name}</span></button>)}</div></fieldset>}<button className="store-add-button" type="button" disabled={product.stock_quantity < 1 || (variants.length > 0 && !selected)} onClick={() => { add(selectedProduct); setAdded(true); window.setTimeout(() => setAdded(false), 1300); }}>{product.stock_quantity < 1 ? "Sold out" : added ? "Added to cart ✓" : "Add to cart +"}</button></div>;
+  const selectedProduct = selected ? { ...product, variants, image_url: selected.image_url, stock_quantity: selected.stock_quantity, variant_id: selected.id, variant_name: selected.name, variant_hex: selected.hex, cart_key: `${product.id}:${selected.id}` } : product;
+  const selectedStock = selected ? selected.stock_quantity : product.stock_quantity;
+  return <div className="add-product-actions">{showVariantOptions && variants.length > 0 && <fieldset className="product-color-choice"><legend>Available colors{selected ? ` · Selected: ${selected.name}` : ""}</legend><div>{variants.map((variant) => <button key={variant.id} type="button" className={`product-color-swatch${selected?.id === variant.id ? " selected" : ""}${variant.stock_quantity < 1 ? " out-of-stock" : ""}`} style={{ "--swatch-color": variant.hex } as CSSProperties} onClick={() => { setLocalSelected(variant); onVariantSelect?.(variant); if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("antwiplus:product-color-selected", { detail: { productId: product.id, variantId: variant.id } })); }} aria-label={`Choose ${variant.name}${variant.stock_quantity < 1 ? ", out of stock" : `, ${variant.stock_quantity} available`}`} aria-pressed={selected?.id === variant.id} title={`${variant.name}${variant.stock_quantity < 1 ? " · Out of stock" : ` · ${variant.stock_quantity} available`}`}>{variant.image_url && <img src={variant.image_url} alt="" />}<span>{variant.name}</span>{variant.stock_quantity < 1 && <em>Out</em>}</button>)}</div></fieldset>}<button className="store-add-button" type="button" disabled={selectedStock < 1 || (variants.length > 0 && !selected)} onClick={() => { add(selectedProduct); setAdded(true); window.setTimeout(() => setAdded(false), 1300); }}>{selectedStock < 1 ? "Out of stock" : added ? "Added to cart ✓" : "Add to cart +"}</button></div>;
 }
 
 export function CartCount() {
