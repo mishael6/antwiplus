@@ -12,7 +12,42 @@ create table if not exists public.product_color_variants (
   unique (product_id, name)
 );
 
+-- Repair installations where this table existed before the UUID default was added.
+alter table public.product_color_variants
+  alter column id set default gen_random_uuid();
+
 create index if not exists product_color_variants_product_sort_idx on public.product_color_variants(product_id, sort_order);
+
+-- Backfill each existing product's main photo as its first selectable color.
+-- New products are also saved this way by the application.
+with products_missing_main_photo as (
+  select p.id
+  from public.products p
+  where p.image_url is not null
+    and not exists (
+      select 1 from public.product_color_variants v
+      where v.product_id = p.id and v.image_url = p.image_url
+    )
+)
+update public.product_color_variants v
+set sort_order = v.sort_order + 1
+from products_missing_main_photo missing
+where v.product_id = missing.id;
+
+insert into public.product_color_variants (product_id, name, hex, image_url, sort_order)
+select p.id,
+  case when exists (
+    select 1 from public.product_color_variants existing
+    where existing.product_id = p.id and existing.name = 'Main photo'
+  ) then 'Main photo (' || left(p.id::text, 6) || ')' else 'Main photo' end,
+  '#245b86', p.image_url, 0
+from public.products p
+where p.image_url is not null
+  and not exists (
+    select 1 from public.product_color_variants v
+    where v.product_id = p.id and v.image_url = p.image_url
+  );
+
 alter table public.product_color_variants enable row level security;
 grant select on public.product_color_variants to anon, authenticated;
 grant insert, update, delete on public.product_color_variants to authenticated;

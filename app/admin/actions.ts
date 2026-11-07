@@ -68,8 +68,8 @@ async function saveColorVariants(productId: string, variants: SavedColorVariant[
   const { data: previous, error: readError } = await service.from("product_color_variants").select("id,name,hex,image_url,sort_order").eq("product_id", productId);
   if (readError) return { error: readError, previous: [] as SavedColorVariant[] };
   const existingIds = new Set((previous ?? []).map((variant) => variant.id));
-  const submitted = variants.map(({ id, ...variant }) => ({ ...variant, ...(id && existingIds.has(id) ? { id } : {}), product_id: productId }));
-  const { error: upsertError } = submitted.length ? await service.from("product_color_variants").upsert(submitted) : { error: null };
+  const submitted = variants.map(({ id, ...variant }) => ({ ...variant, id: id && existingIds.has(id) ? id : crypto.randomUUID(), product_id: productId }));
+  const { error: upsertError } = submitted.length ? await service.from("product_color_variants").upsert(submitted, { onConflict: "id" }) : { error: null };
   if (upsertError) return { error: upsertError, previous: (previous ?? []) as SavedColorVariant[] };
   const retainedIds = new Set(submitted.flatMap((variant) => "id" in variant && variant.id ? [variant.id] : []));
   const removedIds = (previous ?? []).map((variant) => variant.id).filter((id) => !retainedIds.has(id));
@@ -188,7 +188,7 @@ export async function createProduct(formData: FormData) {
   const variantCount = Number(formData.get("variant_count") ?? 0);
   const primaryColorName = String(formData.get("primary_color_name") ?? "").trim().slice(0, 40);
   const primaryColorHex = String(formData.get("primary_color_hex") ?? "").trim();
-  if (!Number.isInteger(variantCount) || variantCount < 0 || variantCount > 10 || (variantCount > 0 && (!primaryColorName || !/^#[0-9a-f]{6}$/i.test(primaryColorHex)))) redirect("/admin/products/new?error=invalid");
+  if (!Number.isInteger(variantCount) || variantCount < 0 || variantCount > 10 || !primaryColorName || !/^#[0-9a-f]{6}$/i.test(primaryColorHex)) redirect("/admin/products/new?error=invalid");
   if (variantCount > 0 && Array.from({ length: variantCount }, (_, index) => String(formData.get(`color_name_${index}`) ?? "").trim().toLowerCase()).includes(primaryColorName.toLowerCase())) redirect("/admin/products/new?error=invalid");
   const { variants: extraVariants, uploadedPaths: variantPaths } = await uploadColorVariants(formData, supabase, "/admin/products/new");
   const imagePath = `products/${crypto.randomUUID()}.${extension}`;
@@ -204,8 +204,8 @@ export async function createProduct(formData: FormData) {
     if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths);
     redirect(`/admin/products/new?error=${encodeURIComponent(error.code === "23505" ? "slug" : "save")}`);
   }
-  const variants = extraVariants.length ? [{ name: primaryColorName, hex: primaryColorHex, image_url: imageUrl, sort_order: 0 }, ...extraVariants.map((variant) => ({ ...variant, sort_order: variant.sort_order + 1 }))] : [];
-  if (createdProduct && variants.length) {
+  const variants = [{ name: primaryColorName, hex: primaryColorHex, image_url: imageUrl, sort_order: 0 }, ...extraVariants.map((variant) => ({ ...variant, sort_order: variant.sort_order + 1 }))];
+  if (createdProduct) {
     const result = await saveColorVariants(createdProduct.id, variants, supabase);
     if (result.error) {
       await supabase.from("products").delete().eq("id", createdProduct.id);
@@ -257,9 +257,10 @@ export async function updateProduct(formData: FormData) {
   }
   const result = await saveColorVariants(id, variants, supabase);
   if (result.error) {
+    console.error("[product-update] Color options could not be saved", { productId: id, code: result.error.code, message: result.error.message, details: result.error.details, hint: result.error.hint });
     if (imagePath) await supabase.storage.from("product-images").remove([imagePath]);
     if (variantPaths.length) await supabase.storage.from("product-images").remove(variantPaths);
-    redirect(`/admin/products/${id}?error=save`);
+    redirect(`/admin/products/${id}?error=variants`);
   }
   const retainedImages = new Set(variants.map((variant) => variant.image_url));
   const removedVariantImages = result.previous.map((variant) => productImageStoragePath(variant.image_url)).filter((path): path is string => Boolean(path)).filter((path) => {
